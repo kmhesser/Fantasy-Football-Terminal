@@ -1,0 +1,2362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FANTASY DRAFT TERMINAL v1.0</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+  :root {
+    --green: #00ff41;
+    --green-dim: #00aa2a;
+    --green-dark: #003b0f;
+    --green-glow: #00ff4180;
+    --amber: #ffb000;
+    --red: #ff3c3c;
+    --bg: #0a0f0a;
+    --scanline: rgba(0,0,0,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--green);
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* CRT scanlines overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      var(--scanline) 0px,
+      var(--scanline) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* CRT vignette */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.6) 100%);
+    pointer-events: none;
+    z-index: 9998;
+  }
+
+  /* Flicker animation */
+  @keyframes flicker {
+    0%,100% { opacity: 1; }
+    92% { opacity: 1; }
+    93% { opacity: 0.92; }
+    94% { opacity: 1; }
+    96% { opacity: 0.95; }
+    97% { opacity: 1; }
+  }
+
+  @keyframes blink {
+    0%,49% { opacity: 1; }
+    50%,100% { opacity: 0; }
+  }
+
+  @keyframes scandown {
+    0% { top: -100px; }
+    100% { top: 100vh; }
+  }
+
+  @keyframes glow-pulse {
+    0%,100% { text-shadow: 0 0 6px var(--green-glow); }
+    50% { text-shadow: 0 0 14px var(--green), 0 0 28px var(--green-glow); }
+  }
+
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-10px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .crt-wrap {
+    animation: flicker 8s infinite;
+    min-height: 100vh;
+    padding: 12px;
+  }
+
+  /* Moving scan line */
+  .scan-beam {
+    position: fixed;
+    left: 0; right: 0;
+    height: 100px;
+    background: linear-gradient(to bottom, transparent, rgba(0,255,65,0.03), transparent);
+    animation: scandown 6s linear infinite;
+    pointer-events: none;
+    z-index: 9997;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    border: 2px solid var(--green);
+    padding: 10px 16px;
+    margin-bottom: 10px;
+    background: var(--green-dark);
+    box-shadow: 0 0 20px var(--green-glow), inset 0 0 20px rgba(0,255,65,0.05);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .header-title {
+    font-family: 'VT323', monospace;
+    font-size: 38px;
+    color: var(--green);
+    text-shadow: 0 0 10px var(--green), 0 0 20px var(--green-glow);
+    letter-spacing: 4px;
+    animation: glow-pulse 3s ease-in-out infinite;
+    line-height: 1;
+  }
+
+  .header-sub {
+    color: var(--green-dim);
+    font-size: 11px;
+    letter-spacing: 2px;
+    margin-top: 2px;
+  }
+
+  .header-right {
+    position: absolute;
+    top: 10px; right: 16px;
+    text-align: right;
+  }
+
+  .status-bar {
+    font-size: 11px;
+    color: var(--amber);
+    letter-spacing: 1px;
+    text-shadow: 0 0 6px var(--amber);
+  }
+
+  .clock { color: var(--green-dim); font-size: 11px; }
+
+  /* ── CONTROLS ── */
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .ctrl-group {
+    border: 1px solid var(--green-dim);
+    padding: 6px 12px;
+    background: rgba(0,60,15,0.3);
+  }
+
+  .ctrl-label {
+    font-size: 10px;
+    color: var(--green-dim);
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+
+  select, input[type=number] {
+    background: var(--bg);
+    color: var(--green);
+    border: 1px solid var(--green-dim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    padding: 3px 8px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  select:focus, input:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 6px var(--green-glow);
+  }
+
+  select option { background: #0a140a; }
+
+  .btn {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    padding: 6px 16px;
+    border: 1px solid var(--green);
+    background: transparent;
+    color: var(--green);
+    cursor: pointer;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    transition: all 0.1s;
+  }
+
+  .btn:hover {
+    background: var(--green);
+    color: var(--bg);
+    box-shadow: 0 0 12px var(--green-glow);
+  }
+
+  .btn:disabled:hover {
+    background: transparent;
+    color: inherit;
+    box-shadow: none;
+  }
+
+  .btn.active {
+    background: var(--green);
+    color: var(--bg);
+    box-shadow: 0 0 16px var(--green);
+  }
+
+  .btn.danger {
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  .btn.danger.active, .btn.danger:hover {
+    background: var(--red);
+    color: #000;
+    box-shadow: 0 0 12px var(--red);
+  }
+
+  /* LIVE MODE off — red + pulsing so it can't be missed on draft night */
+  .btn.live-off {
+    border-color: var(--red);
+    color: var(--red);
+    animation: live-nag 1.6s infinite;
+  }
+  .btn.live-off:hover {
+    background: var(--red);
+    color: #000;
+    box-shadow: 0 0 12px var(--red);
+    animation: none;
+  }
+  @keyframes live-nag {
+    0%, 100% { text-shadow: 0 0 6px var(--red); box-shadow: 0 0 4px rgba(255,60,60,0.35); }
+    50%      { text-shadow: 0 0 14px var(--red); box-shadow: 0 0 12px rgba(255,60,60,0.6); }
+  }
+
+  /* ── MAIN GRID ── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: auto auto 1fr;
+    gap: 10px;
+  }
+
+  .rec-panel   { grid-column: 1; grid-row: 1; }
+  .board-panel { grid-column: 1; grid-row: 3; overflow: hidden; }
+
+  /* Right column spans all rows, sits above sticky table headers */
+  .right-col {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: relative;
+    z-index: 100;
+    isolation: isolate;
+    background: var(--bg);
+  }
+
+  .panel {
+    border: 1px solid var(--green-dim);
+    background: rgba(0,20,5,0.5);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    background: var(--green-dark);
+    border-bottom: 1px solid var(--green-dim);
+    padding: 6px 12px;
+    font-family: 'VT323', monospace;
+    font-size: 20px;
+    letter-spacing: 3px;
+    color: var(--green);
+    text-shadow: 0 0 8px var(--green-glow);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .panel-header .badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    border: 1px solid var(--green-dim);
+    padding: 1px 6px;
+    color: var(--green-dim);
+    letter-spacing: 1px;
+  }
+
+  .panel-body { padding: 8px; overflow-y: auto; }
+
+  /* ── RECOMMENDATIONS ── */
+  .rec-panel { grid-column: 1; }
+
+  .rec-card {
+    border: 1px solid var(--green-dim);
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    background: rgba(0,30,8,0.6);
+    animation: slide-in 0.3s ease;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .rec-card:hover {
+    border-color: var(--green);
+    background: rgba(0,60,15,0.6);
+    box-shadow: 0 0 10px var(--green-glow);
+  }
+
+  .rec-card.top-pick {
+    border-color: var(--green);
+    box-shadow: 0 0 14px var(--green-glow);
+  }
+
+  .rec-card.top-pick::before {
+    content: '★ SUGGESTED PICK BASED ON STRATEGY';
+    position: absolute;
+    top: 8px; right: 10px;
+    font-size: 10px;
+    color: var(--amber);
+    text-shadow: 0 0 6px var(--amber);
+    letter-spacing: 1px;
+    white-space: nowrap;
+    animation: glow-pulse 2s infinite;
+  }
+
+  .rec-rank {
+    font-family: 'VT323', monospace;
+    font-size: 28px;
+    color: var(--green-dim);
+    margin-right: 12px;
+    line-height: 1;
+  }
+
+  .rec-name {
+    font-family: 'VT323', monospace;
+    font-size: 26px;
+    color: var(--green);
+    text-shadow: 0 0 6px var(--green-glow);
+    line-height: 1.1;
+  }
+
+  .rec-pos {
+    display: inline-block;
+    border: 1px solid;
+    padding: 1px 6px;
+    font-size: 11px;
+    margin-right: 6px;
+    letter-spacing: 1px;
+  }
+
+  .pos-QB  { border-color: #ff9900; color: #ff9900; }
+  .pos-RB  { border-color: var(--green); color: var(--green); }
+  .pos-WR  { border-color: #00ccff; color: #00ccff; }
+  .pos-TE  { border-color: #cc66ff; color: #cc66ff; }
+  .pos-K   { border-color: var(--green-dim); color: var(--green-dim); }
+
+  .rec-stats {
+    font-size: 11px;
+    color: var(--green-dim);
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
+
+  .rec-stats span { color: var(--green); }
+
+  .rec-bar-wrap { margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+  .rec-bar-label { font-size: 10px; color: var(--green-dim); width: 70px; letter-spacing: 1px; }
+  .rec-bar-bg { flex: 1; height: 6px; background: rgba(0,255,65,0.1); border: 1px solid var(--green-dark); }
+  .rec-bar-fill { height: 100%; background: var(--green); transition: width 0.5s; box-shadow: 0 0 6px var(--green); }
+
+  .injury-badge {
+    font-size: 10px;
+    color: var(--red);
+    border: 1px solid var(--red);
+    padding: 1px 5px;
+    margin-left: 6px;
+    text-shadow: 0 0 4px var(--red);
+  }
+
+  .tag-VALUE   { font-size: 12px; border: 1px solid #00ffcc; color: #00ffcc; padding: 1px 5px; margin-left: 6px; text-shadow: 0 0 4px #00ffcc88; letter-spacing: 1px; cursor: help; position: relative; }
+  .tag-BUST    { font-size: 12px; border: 1px solid var(--red); color: var(--red); padding: 1px 5px; margin-left: 6px; letter-spacing: 1px; cursor: help; position: relative; }
+  .tag-SLEEPER { font-size: 12px; border: 1px solid var(--amber); color: var(--amber); padding: 1px 5px; margin-left: 6px; text-shadow: 0 0 4px #ffb00088; letter-spacing: 1px; cursor: help; position: relative; }
+
+  /* ── TAG TOOLTIPS ── */
+  [data-tip] { position: relative; }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #050f05;
+    border: 1px solid var(--green-dim);
+    color: var(--green);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    line-height: 1.6;
+    padding: 8px 12px;
+    white-space: pre-line;
+    width: 240px;
+    box-shadow: 0 0 16px rgba(0,255,65,0.2);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 9000;
+  }
+  [data-tip]::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--green-dim);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 9001;
+  }
+  [data-tip]:hover::after,
+  [data-tip]:hover::before { opacity: 1; }
+
+  /* ── CONFLICT MODAL ── */
+  .conflict-critical { color: var(--red);   border-color: var(--red);   background: rgba(255,60,60,0.06); }
+  .conflict-warning  { color: var(--amber); border-color: var(--amber); background: rgba(255,176,0,0.06); }
+  .conflict-info     { color: #00ffcc;      border-color: #00ffcc;      background: rgba(0,255,204,0.05); }
+
+  .conflict-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-family: 'Share Tech Mono', monospace;
+    padding: 1px 5px;
+    margin-left: 6px;
+    border: 1px solid;
+    letter-spacing: 1px;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  .conflict-badge.has-critical { border-color: var(--red);   color: var(--red);   animation: glow-pulse 1s infinite; }
+  .conflict-badge.has-warning  { border-color: var(--amber); color: var(--amber); }
+  .conflict-badge.has-info     { border-color: #00ffcc;      color: #00ffcc; }
+
+  .conflict-entry {
+    border: 1px solid;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    border-radius: 1px;
+  }
+  .conflict-entry-title {
+    font-family: 'VT323', monospace;
+    font-size: 20px;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+  .conflict-entry-detail {
+    font-size: 12px;
+    line-height: 1.7;
+    letter-spacing: 0.5px;
+  }
+  .conflict-severity-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+  .sev-pill {
+    padding: 2px 10px;
+    border: 1px solid;
+  }
+
+  .source-line {
+    letter-spacing: 1px;
+    border-top: 1px solid rgba(0,255,65,0.1);
+    padding-top: 6px;
+  }
+
+  /* ── MY TURN ALERT ── */
+  .my-turn-banner {
+    border: 2px solid var(--amber);
+    background: rgba(255,176,0,0.1);
+    padding: 10px 16px;
+    margin-bottom: 8px;
+    text-align: center;
+    animation: glow-pulse 0.8s infinite;
+    display: none;
+  }
+
+  .my-turn-banner.visible { display: block; }
+
+  .my-turn-text {
+    font-family: 'VT323', monospace;
+    font-size: 32px;
+    color: var(--amber);
+    text-shadow: 0 0 12px var(--amber);
+    letter-spacing: 4px;
+  }
+
+  /* ── ROSTER ── */
+  .roster-panel { flex: 0 0 auto; }
+
+  .roster-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(0,255,65,0.08);
+    font-size: 12px;
+    animation: slide-in 0.3s ease;
+  }
+
+  .roster-slot { color: var(--green-dim); font-size: 10px; letter-spacing: 1px; width: 40px; }
+  .roster-name { color: var(--green); flex: 1; padding: 0 8px; }
+  .roster-pts  { color: var(--green-dim); font-size: 11px; }
+
+  .roster-empty {
+    color: rgba(0,255,65,0.2);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(0,255,65,0.04);
+  }
+
+  /* ── DRAFT LOG ── */
+  .log-panel { max-height: 280px; }
+
+  .log-entry {
+    padding: 3px 8px;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(0,255,65,0.06);
+    display: flex;
+    gap: 8px;
+    animation: slide-in 0.2s ease;
+  }
+
+  .log-entry.mine {
+    background: rgba(0,255,65,0.06);
+    border-left: 2px solid var(--green);
+  }
+
+  .log-pick-num { color: var(--green-dim); width: 36px; font-size: 10px; }
+  .log-player   { color: var(--green); flex: 1; }
+  .log-team     { color: var(--green-dim); font-size: 10px; text-align: right; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── DRAFT GRID BOARD (snake grid: teams × rounds) ── */
+  .grid-board-panel { grid-column: 1; grid-row: 2; overflow: hidden; }
+  .grid-board-wrap  { overflow: auto; max-height: 540px; }
+  .collapse-target.collapsed, .grid-board-wrap.collapsed { display: none; }
+
+  /* Collapsed panels shrink to their header instead of stretching to fill the grid row */
+  .panel:has(.collapsed) { align-self: start; }
+
+  .gb-collapse-btn {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    padding: 1px 6px;
+    border: 1px solid var(--green-dim);
+    background: transparent;
+    color: var(--green-dim);
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.1s;
+  }
+  .gb-collapse-btn:hover {
+    border-color: var(--green);
+    color: var(--green);
+    box-shadow: 0 0 6px var(--green-glow);
+  }
+
+  /* ── SNIPE RISK BADGES ── */
+  .snipe-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    padding: 1px 5px;
+    border: 1px solid;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    cursor: help;
+  }
+  .snipe-SAFE  { color: var(--green);  border-color: var(--green-dim); }
+  .snipe-RISKY { color: var(--amber);  border-color: #ffb00066; }
+  .snipe-GONE  { color: var(--red);    border-color: #ff3c3c66; }
+
+  /* ── PICK GRADE BADGES ── */
+  .grade-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    padding: 0 4px;
+    border: 1px solid;
+    letter-spacing: 1px;
+    cursor: help;
+  }
+  .grade-a { color: var(--green); border-color: var(--green-dim); }
+  .grade-b { color: var(--amber); border-color: #ffb00066; }
+  .grade-c { color: var(--red);   border-color: #ff3c3c66; }
+
+  /* ── POSITION RUN TICKER ── */
+  #posRunTicker {
+    display: none;
+    margin: 6px 0 0;
+    padding: 4px 12px;
+    border: 1px solid var(--amber);
+    background: rgba(255,176,0,0.07);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--amber);
+    animation: run-pulse 1.4s infinite;
+  }
+  @keyframes run-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+  }
+
+  /* ── TARGET QUEUE ── */
+  .star-btn {
+    background: transparent;
+    border: none;
+    color: var(--green-dim);   /* must read against the near-black bg */
+    cursor: pointer;
+    font-size: 15px;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.1s, transform 0.1s;
+  }
+  .star-btn:hover { color: var(--amber); transform: scale(1.25); }
+  .star-btn.starred { color: var(--amber); text-shadow: 0 0 6px var(--amber); }
+
+  .queue-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--green-dark);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+  }
+  .queue-row.sniped { opacity: 0.45; }
+  .queue-row.sniped .queue-name { text-decoration: line-through; color: var(--red); }
+  .queue-name { flex: 1; color: var(--green); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .queue-sniped-tag { font-size: 9px; color: var(--red); letter-spacing: 1px; }
+
+  /* ── STUPID PICK ROAST ── */
+  #roastToast {
+    position: fixed;
+    top: 70px; left: 50%;
+    transform: translateX(-50%) scale(0.9);
+    z-index: 9998;
+    display: none;
+    max-width: 620px;
+    padding: 14px 26px;
+    border: 2px solid var(--red);
+    background: rgba(30,0,0,0.94);
+    box-shadow: 0 0 30px rgba(255,60,60,0.55), inset 0 0 24px rgba(255,60,60,0.12);
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.25s, transform 0.25s;
+  }
+  #roastToast.show { opacity: 1; transform: translateX(-50%) scale(1); }
+
+  .roast-label {
+    font-family: 'VT323', monospace;
+    font-size: 40px;
+    letter-spacing: 6px;
+    color: var(--red);
+    text-shadow: 0 0 14px var(--red);
+    line-height: 1;
+    animation: roast-shake 0.4s ease-in-out 3;
+  }
+  @keyframes roast-shake {
+    0%,100% { transform: translateX(0) }
+    25%     { transform: translateX(-5px) rotate(-1deg) }
+    75%     { transform: translateX(5px) rotate(1deg) }
+  }
+  .roast-who {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px; letter-spacing: 2px;
+    color: var(--amber); margin-top: 6px;
+  }
+  .roast-reason {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 1px;
+    color: var(--green-dim); margin-top: 6px; line-height: 1.5;
+  }
+
+  .roast-badge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px; padding: 0 3px;
+    border: 1px solid var(--red); color: var(--red);
+    letter-spacing: 1px; cursor: help;
+  }
+
+  .grid-board { border-collapse: collapse; width: 100%; table-layout: fixed; min-width: 780px; }
+
+  .grid-board th {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--green-dim);
+    background: #001504;
+    border: 1px solid var(--green-dark);
+    padding: 5px 3px;
+    position: sticky; top: 0; z-index: 5;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .grid-board th.my-col {
+    color: var(--amber);
+    text-shadow: 0 0 6px var(--amber);
+    border-bottom: 1px solid var(--amber);
+  }
+
+  .grid-board td {
+    border: 1px solid var(--green-dark);
+    padding: 0;
+    height: 34px;
+    vertical-align: middle;
+    overflow: hidden;
+  }
+  .grid-board td.rnd {
+    width: 52px;
+    text-align: center;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--green-dim);
+    background: #001504;
+    position: sticky; left: 0; z-index: 4;
+    white-space: nowrap;
+  }
+
+  .gb-cell { padding: 3px 5px; font-family: 'Share Tech Mono', monospace; font-size: 10px; line-height: 1.3; }
+  .gb-name { color: var(--green); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gb-meta { font-size: 9px; color: var(--green-dim); letter-spacing: 1px; white-space: nowrap; }
+
+  td.gb-QB { border-left: 3px solid #ff9900;      background: rgba(255,153,0,0.08); }
+  td.gb-RB { border-left: 3px solid var(--green); background: rgba(0,255,65,0.08); }
+  td.gb-WR { border-left: 3px solid #00ccff;      background: rgba(0,204,255,0.08); }
+  td.gb-TE { border-left: 3px solid #cc66ff;      background: rgba(204,102,255,0.08); }
+  td.gb-K  { border-left: 3px solid var(--green-dim); background: rgba(0,170,42,0.08); }
+
+  .gbp-QB { color: #ff9900; }
+  .gbp-RB { color: var(--green); }
+  .gbp-WR { color: #00ccff; }
+  .gbp-TE { color: #cc66ff; }
+  .gbp-K  { color: var(--green-dim); }
+
+  td.my-col-bg { background: rgba(0,255,65,0.04); }
+  td.gb-mine { box-shadow: inset 0 0 14px rgba(0,255,65,0.3); }
+  td.gb-mine .gb-name { text-shadow: 0 0 6px var(--green-glow); }
+
+  td.gb-next { border: 1px dashed var(--amber); }
+  .gb-next-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-align: center;
+    color: var(--amber);
+    padding: 4px 2px;
+    animation: gb-pulse 1s infinite;
+    white-space: nowrap; overflow: hidden;
+  }
+  @keyframes gb-pulse {
+    0%, 100% { opacity: 1; text-shadow: 0 0 8px var(--amber); }
+    50%      { opacity: 0.4; }
+  }
+
+  /* ── BOARD TABLE ── */
+  .board-panel { grid-column: 1 / -1; }
+
+  .board-filter {
+    display: flex;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--green-dark);
+  }
+
+  .filter-btn {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    padding: 2px 10px;
+    border: 1px solid var(--green-dark);
+    background: transparent;
+    color: var(--green-dim);
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.1s;
+  }
+
+  .filter-btn.active, .filter-btn:hover {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(0,255,65,0.05);
+  }
+
+  .board-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+  .board-table th {
+    text-align: left;
+    padding: 4px 8px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--green-dim);
+    border-bottom: 1px solid var(--green-dim);
+    position: sticky;
+    top: 0;
+    background: #0a140a;
+  }
+
+  .board-table th:nth-child(1) { width: 58px; }   /* RNK + score */
+  .board-table th:nth-child(2) { width: 175px; }  /* PLAYER */
+  .board-table th:nth-child(3) { width: 46px; }   /* POS */
+  .board-table th:nth-child(4) { width: 46px; }   /* NFL */
+  .board-table th:nth-child(5) { width: 46px; }   /* BYE */
+  .board-table th:nth-child(6) { width: 80px; }   /* PROJ/SEA */
+  .board-table th:nth-child(7) { width: 72px; }   /* AVG/WK */
+  .board-table th:nth-child(8) { width: 55px; }   /* %OWN */
+  .board-table th:nth-child(9) { width: 150px; }  /* TAG */
+  .board-table th:nth-child(10) { width: auto; }  /* INTEL */
+
+  .board-table td:nth-child(9) { white-space: nowrap; overflow: hidden; }
+
+  .board-table td {
+    padding: 3px 8px;
+    border-bottom: 1px solid rgba(0,255,65,0.06);
+    word-wrap: break-word;
+    white-space: normal;
+  }
+
+  .board-table tr:hover td { background: rgba(0,255,65,0.04); }
+  .board-table tr[onclick]:not(.drafted):hover td {
+    background: rgba(0,255,65,0.1);
+    color: var(--green);
+  }
+  .board-table tr[onclick]:not(.drafted):hover .name-cell {
+    text-shadow: 0 0 6px var(--green-glow);
+  }
+  .board-table tr.drafted td { opacity: 0.25; text-decoration: line-through; }
+
+  .rank-cell  { color: var(--green-dim); }
+  .name-cell  { color: var(--green); font-size: 14px; }
+  .team-cell  { color: var(--green-dim); }
+  .bye-cell   { color: var(--amber); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .pts-cell   { color: var(--green); font-variant-numeric: tabular-nums; }
+  .avg-cell   { color: var(--green-dim); font-variant-numeric: tabular-nums; }
+  .own-cell   { color: var(--green-dim); font-size: 12px; }
+
+  /* ── CURSOR BLINK ── */
+  .cursor::after {
+    content: '█';
+    animation: blink 1s step-end infinite;
+    color: var(--green);
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--green-dim); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--green); }
+
+  .boot-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 99999;
+    font-family: 'VT323', monospace;
+  }
+
+  .boot-title {
+    font-size: 64px;
+    color: var(--green);
+    text-shadow: 0 0 20px var(--green), 0 0 40px var(--green-glow);
+    letter-spacing: 8px;
+    animation: glow-pulse 1s infinite;
+  }
+
+  .boot-lines {
+    margin-top: 30px;
+    font-size: 18px;
+    color: var(--green-dim);
+    letter-spacing: 2px;
+    text-align: left;
+    min-width: 400px;
+  }
+
+  /* ── STRATEGY MODAL ── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,10,0,0.85);
+    z-index: 99990;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal-box {
+    border: 2px solid var(--green);
+    background: #050f05;
+    box-shadow: 0 0 40px var(--green-glow), 0 0 80px rgba(0,255,65,0.1);
+    width: min(720px, 94vw);
+    max-height: 85vh;
+    overflow-y: auto;
+    position: relative;
+    animation: slide-in 0.2s ease;
+  }
+
+  .modal-header {
+    background: var(--green-dark);
+    border-bottom: 1px solid var(--green-dim);
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .modal-title {
+    font-family: 'VT323', monospace;
+    font-size: 32px;
+    color: var(--green);
+    text-shadow: 0 0 10px var(--green-glow);
+    letter-spacing: 3px;
+  }
+
+  .modal-close {
+    font-family: 'VT323', monospace;
+    font-size: 28px;
+    color: var(--red);
+    background: none;
+    border: 1px solid var(--red);
+    padding: 2px 12px;
+    cursor: pointer;
+    text-shadow: 0 0 6px var(--red);
+    transition: all 0.1s;
+  }
+  .modal-close:hover {
+    background: var(--red);
+    color: #000;
+    box-shadow: 0 0 12px var(--red);
+  }
+
+  .modal-body { padding: 20px 24px; }
+
+  .modal-source {
+    font-size: 10px;
+    color: var(--green-dim);
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+    border-left: 2px solid var(--green-dim);
+    padding-left: 10px;
+  }
+
+  .modal-section {
+    margin-bottom: 18px;
+  }
+
+  .modal-section-title {
+    font-family: 'VT323', monospace;
+    font-size: 20px;
+    color: var(--amber);
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+    text-shadow: 0 0 6px #ffb00066;
+  }
+
+  .modal-section p, .modal-section li {
+    font-size: 12px;
+    color: var(--green-dim);
+    line-height: 1.8;
+    letter-spacing: 0.5px;
+  }
+
+  .modal-section li::before { content: '▸ '; color: var(--green); }
+  .modal-section ul { list-style: none; padding-left: 8px; }
+
+  .modal-round-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 8px; }
+  .modal-round-table th {
+    text-align: left; padding: 4px 8px;
+    color: var(--green-dim); font-size: 10px; letter-spacing: 2px;
+    border-bottom: 1px solid var(--green-dark);
+  }
+  .modal-round-table td { padding: 3px 8px; border-bottom: 1px solid rgba(0,255,65,0.06); }
+  .modal-round-table tr:hover td { background: rgba(0,255,65,0.04); }
+  .modal-round-table .td-round { color: var(--green-dim); width: 40px; }
+  .modal-round-table .td-target { color: var(--green); }
+  .modal-round-table .td-avoid { color: var(--red); font-size: 10px; }
+
+  .modal-league-win {
+    border: 1px solid var(--amber);
+    background: rgba(255,176,0,0.05);
+    padding: 10px 14px;
+    margin-top: 12px;
+  }
+  .modal-league-label {
+    font-size: 10px; color: var(--amber); letter-spacing: 2px; margin-bottom: 6px;
+    text-shadow: 0 0 6px #ffb00066;
+  }
+
+  .no-picks {
+    color: var(--green-dim);
+    font-size: 12px;
+    padding: 12px;
+    text-align: center;
+    letter-spacing: 2px;
+  }
+
+  .boot-line { margin: 4px 0; }
+  .boot-ok   { color: var(--green); }
+</style>
+</head>
+<body>
+
+<div class="scan-beam"></div>
+
+<!-- BOOT SCREEN -->
+<div class="boot-screen" id="bootScreen">
+  <div class="boot-title">FANTASY DRAFT</div>
+  <div style="font-family:'Share Tech Mono',monospace; color:var(--green-dim); font-size:13px; letter-spacing:3px; margin-top:8px;">ESPN FANTASY FOOTBALL // 2026</div>
+  <div class="boot-lines" id="bootLines"></div>
+</div>
+
+<div class="crt-wrap" id="app" style="display:none">
+
+<!-- CONFLICT WARNING MODAL -->
+<div class="modal-overlay" id="conflictModal" onclick="closeConflictModal(event)">
+  <div class="modal-box" id="conflictModalBox" style="border-color:var(--red)">
+    <div class="modal-header" style="border-color:rgba(255,60,60,0.4)">
+      <div class="modal-title" id="conflictModalTitle" style="color:var(--red); text-shadow:0 0 10px rgba(255,60,60,0.5)">⚠ DRAFT CONFLICTS</div>
+      <button class="modal-close" onclick="closeConflictModalBtn()">✕ CLOSE</button>
+    </div>
+    <div class="modal-body" id="conflictModalBody"></div>
+  </div>
+</div>
+<div class="modal-overlay" id="stratModal" onclick="closeModal(event)">
+  <div class="modal-box" id="stratModalBox">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">STRATEGY</div>
+      <button class="modal-close" onclick="closeStratModal()">✕ CLOSE</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-title">▶ FANTASY DRAFT TERMINAL v1.0</div>
+    <div class="header-sub">ESPN FANTASY FOOTBALL // LIVE DRAFT ASSISTANT // 2026 SEASON</div>
+    <div class="header-right">
+      <div class="status-bar" id="statusBar">INITIALIZING...</div>
+      <div class="clock" id="clock"></div>
+      <div style="font-size:10px; color:var(--green-dim); margin-top:2px;" id="lastPoll">LAST SYNC: --</div>
+    </div>
+  </div>
+
+  <!-- POSITION RUN TICKER -->
+  <div id="posRunTicker"></div>
+
+  <!-- STUPID PICK ROAST TOAST -->
+  <div id="roastToast" onclick="this.classList.remove('show')">
+    <div class="roast-label" id="roastLabel">STUPID PICK</div>
+    <div class="roast-who" id="roastWho"></div>
+    <div class="roast-reason" id="roastReason"></div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">▸ STRATEGY</div>
+      <div style="display:flex; gap:6px; align-items:center">
+        <select id="stratSelect" onchange="setStrategy(this.value)">
+          <option value="league-history">1. LEAGUE HISTORY ★</option>
+          <option value="hero-rb">2. HERO RB</option>
+          <option value="balanced">3. BALANCED BPA</option>
+          <option value="late-qb">4. LATE-ROUND QB</option>
+          <option value="rb-heavy">5. ROBUST RB</option>
+          <option value="zero-rb">6. ZERO-RB</option>
+          <option value="hero-qb">7. HERO QB</option>
+        </select>
+        <button class="btn" onclick="openStratModal()" style="padding:4px 10px; font-size:11px">? INFO</button>
+      </div>
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">▸ DRAFT POSITION</div>
+      <input type="number" id="draftPos" min="1" max="10" value="5" style="width:60px"
+             onchange="setDraftPos(this.value)">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">▸ LIVE MODE</div>
+      <button class="btn live-off" id="liveBtn" onclick="toggleLive()">ACTIVATE LIVE</button>
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">▸ DEMO MODE</div>
+      <div style="display:flex; gap:6px; align-items:center">
+        <button class="btn" id="demoBtn" onclick="startDemo()" style="border-color:#00ffcc; color:#00ffcc">▶ START DEMO</button>
+        <button class="btn" id="demoStopBtn" onclick="stopDemo()" style="border-color:var(--red); color:var(--red)">■ STOP</button>
+        <button class="btn" id="demoResetBtn" onclick="resetDemo()" style="border-color:var(--amber); color:var(--amber)">↺ RESET</button>
+        <select id="demoSpeed" onchange="setDemoSpeed(this.value)" style="width:80px" title="Seconds between opponent picks">
+          <option value="2">FAST 2s</option>
+          <option value="4" selected>NORM 4s</option>
+          <option value="7">SLOW 7s</option>
+        </select>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">▸ ROUND</div>
+      <div style="font-family:'VT323',monospace; font-size:28px; color:var(--amber); text-shadow:0 0 8px var(--amber);" id="roundDisplay">R1</div>
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">▸ PICK #</div>
+      <div style="font-family:'VT323',monospace; font-size:28px; color:var(--green);" id="pickDisplay">-</div>
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">▸ UNTIL YOU</div>
+      <div style="font-family:'VT323',monospace; font-size:28px; color:var(--green);" id="untilYouDisplay" title="Opponent picks before your next turn">-</div>
+    </div>
+  </div>
+
+  <!-- YOUR TURN BANNER -->
+  <div class="my-turn-banner" id="myTurnBanner">
+    <div class="my-turn-text">⚡ ON THE CLOCK — MAKE YOUR PICK ⚡</div>
+  </div>
+
+  <!-- DEMO PICK INPUT — shows only during demo on your turn -->
+  <div id="demoPickPanel" style="display:none; border:2px solid #00ffcc; background:rgba(0,255,204,0.05); padding:12px 16px; margin-bottom:10px;">
+    <div style="font-family:'VT323',monospace; font-size:22px; color:#00ffcc; letter-spacing:3px; margin-bottom:8px; text-shadow:0 0 8px #00ffcc88;">
+      ⚡ DEMO — YOUR PICK — Click a recommendation above OR type a name:
+    </div>
+    <div style="display:flex; gap:8px; align-items:center">
+      <input type="text" id="demoPickInput" placeholder="e.g. Jahmyr Gibbs"
+             style="flex:1; font-size:14px; padding:6px 10px; background:#050f05; color:#00ffcc; border:1px solid #00ffcc; font-family:'Share Tech Mono',monospace;"
+             onkeydown="if(event.key==='Enter') submitDemoPick()">
+      <button class="btn" onclick="submitDemoPick()" style="border-color:#00ffcc; color:#00ffcc; font-size:13px; padding:6px 18px;">✓ DRAFT</button>
+      <div id="demoPickError" style="color:var(--red); font-size:12px; letter-spacing:1px;"></div>
+    </div>
+    <div style="font-size:11px; color:var(--green-dim); margin-top:6px; letter-spacing:1px;">
+      TIP: Click any card in TOP PICKS to auto-fill, or type any player name. Partial names work.
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="grid">
+
+    <!-- RECOMMENDATIONS -->
+    <div class="panel rec-panel">
+      <div class="panel-header">
+        ▸ TOP PICKS
+        <span style="display:flex; align-items:center; gap:8px">
+          <span class="badge" id="stratLabel">LEAGUE HISTORY</span>
+          <button class="gb-collapse-btn" id="recCollapseBtn" onclick="togglePanel('recPanel','recCollapseBtn','recCollapsed')" title="Collapse / expand">[−]</button>
+        </span>
+      </div>
+      <div class="panel-body collapse-target" id="recPanel" style="max-height:480px; overflow-y:auto">
+        <div class="no-picks cursor">WAITING FOR DATA</div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN — MY ROSTER + PICK FEED -->
+    <div class="right-col">
+
+      <!-- MY ROSTER -->
+      <div class="panel roster-panel">
+        <div class="panel-header">
+          ▸ MY ROSTER
+          <span class="badge" id="rosterCount">0/15</span>
+        </div>
+        <div class="panel-body" id="rosterPanel" style="height:380px; overflow-y:auto; padding:0">
+          <div class="no-picks">EMPTY</div>
+        </div>
+      </div>
+
+      <!-- TARGET QUEUE -->
+      <div class="panel">
+        <div class="panel-header">
+          ▸ TARGETS
+          <span style="display:flex; align-items:center; gap:8px">
+            <span class="badge" id="queueCount">0</span>
+            <button class="gb-collapse-btn" id="queueCollapseBtn" onclick="togglePanel('queuePanel','queueCollapseBtn','queueCollapsed')" title="Collapse / expand">[−]</button>
+          </span>
+        </div>
+        <div id="queuePanel" class="collapse-target" style="max-height:150px; overflow-y:auto">
+          <div class="no-picks" style="padding:12px; font-size:10px">▸ CLICK THE ☆ NEXT TO ANY PLAYER<br>IN TOP PICKS OR PLAYER BOARD</div>
+        </div>
+      </div>
+
+      <!-- PICK FEED — equal second half -->
+      <div class="panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+        <div class="panel-header">
+          ▸ PICK FEED
+          <span class="badge" id="pickCount">0 PICKS</span>
+        </div>
+        <div id="logPanel" style="flex:1; overflow-y:auto; padding:0; min-height:380px;">
+          <div class="no-picks">DRAFT NOT STARTED</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- (pick feed moved back into right col) -->
+
+    <!-- DRAFT GRID BOARD -->
+    <div class="panel grid-board-panel">
+      <div class="panel-header">
+        ▸ DRAFT BOARD
+        <span style="display:flex; align-items:center; gap:8px">
+          <span class="badge" id="gridNextLabel">AWAITING DRAFT</span>
+          <button class="gb-collapse-btn" id="gridCollapseBtn" onclick="togglePanel('gridBoardWrap','gridCollapseBtn','gbCollapsed')" title="Collapse / expand board">[−]</button>
+        </span>
+      </div>
+      <div class="grid-board-wrap" id="gridBoardWrap">
+        <div class="no-picks" style="letter-spacing:1px; padding:20px 12px">▸ BOARD POPULATES AS PICKS COME IN</div>
+      </div>
+    </div>
+
+    <!-- FULL BOARD -->
+    <div class="panel board-panel">
+      <div class="panel-header">
+        ▸ PLAYER BOARD
+        <button class="gb-collapse-btn" id="pbCollapseBtn" onclick="togglePanel('playerBoardWrap','pbCollapseBtn','pbCollapsed')" title="Collapse / expand">[−]</button>
+      </div>
+      <div id="playerBoardWrap" class="collapse-target">
+      <div class="board-filter" id="posFilters">
+        <button class="filter-btn active" onclick="setFilter('ALL', this)">ALL</button>
+        <button class="filter-btn" onclick="setFilter('QB', this)">QB</button>
+        <button class="filter-btn" onclick="setFilter('RB', this)">RB</button>
+        <button class="filter-btn" onclick="setFilter('WR', this)">WR</button>
+        <button class="filter-btn" onclick="setFilter('TE', this)">TE</button>
+        <button class="filter-btn" onclick="setFilter('K', this)">K</button>
+        <button class="filter-btn" onclick="setFilter('VALUE', this)" style="margin-left:12px; color:#00ffcc; border-color:#00ffcc44">VALUES</button>
+        <button class="filter-btn" onclick="setFilter('SLEEPER', this)" style="color:var(--amber); border-color:#ffb00044">SLEEPERS</button>
+        <button class="filter-btn" onclick="setFilter('BUST', this)" style="color:var(--red); border-color:#ff3c3c44">BUSTS</button>
+        <label style="margin-left:auto; font-size:11px; font-family:'Share Tech Mono',monospace; color:var(--green-dim); letter-spacing:1px; cursor:pointer; white-space:nowrap">
+          <input type="checkbox" id="hideDrafted" onchange="renderBoard()" style="margin-right:4px">HIDE DRAFTED
+        </label>
+        <span class="badge" id="boardCount" style="margin-left:8px; white-space:nowrap">0 AVAILABLE</span>
+      </div>
+      <div style="max-height:420px; overflow-y:auto">
+        <table class="board-table">
+          <thead>
+            <tr>
+              <th>RNK</th>
+              <th>PLAYER</th>
+              <th>POS</th>
+              <th>NFL</th>
+              <th>BYE</th>
+              <th>PROJ/SEA</th>
+              <th>AVG/WK</th>
+              <th>%OWN</th>
+              <th>TAG</th>
+              <th>INTEL</th>
+            </tr>
+          </thead>
+          <tbody id="boardBody"></tbody>
+        </table>
+      </div>
+      </div>
+    </div>
+
+    <!-- league history panel removed to reclaim space -->
+
+  </div>
+</div>
+
+<script>
+let appState = null;
+let posFilter = 'ALL';
+let liveMode = false;
+let strategy = 'league-history'; // I18 fix: matches server default
+let draftPos = 5;
+
+// ── Boot sequence ──────────────────────────────────────────────────────────
+const bootLines = [
+  ['BIOS v2.6.1 - FANTASY FOOTBALL SYSTEMS INC.', 100],
+  ['MEMORY TEST: 640K OK', 200],
+  ['INITIALIZING ESPN API INTERFACE...', 400],
+  ['LOADING PLAYER DATABASE...', 800],
+  ['CONNECTING TO YOUR LEAGUE...', 1200],
+  ['LEAGUE CONNECTION ESTABLISHED', 1600],
+  ['CROSS-REFERENCING LEAGUE CHAMPIONSHIP DATA...', 2000],
+  ['REMINDING YOU THE 2024 CHAMP WENT WR-RB-RB-RB...', 2400],
+  ['HERO QB WIN COUNT: 0. STILL LOADING ANYWAY.', 2800],
+  ['TROPHY CASE: LOCATING...', 3200],
+  ['DRAFT ASSISTANT MODULE: LOADED', 3600],
+  ['ALL SYSTEMS NOMINAL.', 4000],
+  ['THIS TERMINAL ACCEPTS NO RESPONSIBILITY FOR YOUR PICKS', 4400],
+];
+
+async function boot() {
+  const container = document.getElementById('bootLines');
+  for (const [text, delay] of bootLines) {
+    await new Promise(r => setTimeout(r, delay - (bootLines[0][1])));
+    const line = document.createElement('div');
+    line.className = 'boot-line';
+    const isOk = text.includes('OK') || text.includes('LOADED') || text.includes('NOMINAL') || text.includes('TEAM ID');
+    line.innerHTML = `> ${text}${isOk ? ' <span class="boot-ok">[OK]</span>' : ''}`;
+    container.appendChild(line);
+  }
+  await new Promise(r => setTimeout(r, 800));
+  document.getElementById('bootScreen').style.opacity = '0';
+  document.getElementById('bootScreen').style.transition = 'opacity 0.5s';
+  setTimeout(() => {
+    document.getElementById('bootScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+  }, 500);
+}
+
+// ── Clock ─────────────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}).toUpperCase() + ' ' +
+    now.toLocaleTimeString('en-US', {hour12:false});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Controls ──────────────────────────────────────────────────────────────
+async function setStrategy(val) {
+  strategy = val;
+  await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({strategy: val})});
+  poll(); // refresh immediately — don't wait for the 5s interval
+}
+
+async function setDraftPos(val) {
+  draftPos = parseInt(val);
+  await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({draft_pos: parseInt(val)})});
+}
+
+async function toggleLive() {
+  liveMode = !liveMode;
+  await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({live: liveMode})});
+  const btn = document.getElementById('liveBtn');
+  setLiveBtn(liveMode);
+}
+
+function setLiveBtn(on) {
+  const btn = document.getElementById('liveBtn');
+  btn.textContent = on ? 'DEACTIVATE LIVE' : 'ACTIVATE LIVE';
+  btn.classList.toggle('active', on);
+  btn.classList.toggle('live-off', !on);   // red nag only while off
+}
+
+function setFilter(pos, btn) {
+  posFilter = pos;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (appState) renderBoard();
+}
+
+// ── Render helpers ────────────────────────────────────────────────────────
+function posClass(pos) {
+  const map = {QB:'pos-QB', RB:'pos-RB', WR:'pos-WR', TE:'pos-TE', K:'pos-K'};
+  return map[pos] || '';
+}
+
+const TAG_TIPS = {
+  VALUE:   '🟢 VALUE\nExpert rank beats public ADP.\nYou get more than you pay for.\nDraft 1-2 rounds earlier than ADP.',
+  BUST:    '🔴 BUST\nPublic is overvaluing this player.\nADP is higher than expert rank.\nLet someone else overpay.',
+  SLEEPER: '🟡 SLEEPER\nLate-round dart with upside.\nHandcuff, breakout, or depth.\nTarget in rounds 11-14 cheap.',
+};
+
+// ── On-the-clock alert: beep + screen flash ───────────────────────────────
+let audioCtx = null;
+let lastClockAlert = false;
+
+function playClockBeep() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    // Two short rising blips — audible without being obnoxious
+    [[880, 0], [1320, 0.18]].forEach(([freq, offset]) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      const t = audioCtx.currentTime + offset;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.18, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(t); osc.stop(t + 0.16);
+    });
+  } catch (e) { /* audio blocked — flash still fires */ }
+}
+
+function flashScreen() {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed; inset:0; background:var(--green); opacity:0.22; pointer-events:none; z-index:9999; transition:opacity 0.45s';
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '0'; });
+  setTimeout(() => el.remove(), 500);
+}
+
+function checkClockAlert(data) {
+  const onClock = !!(data.next_pick_is_mine && (data.live || data.demo)) || !!data.demo_waiting_for_pick;
+  if (onClock && !lastClockAlert) { playClockBeep(); flashScreen(); }
+  lastClockAlert = onClock;
+}
+
+// ── "STUPID PICK" roast toast ─────────────────────────────────────────────
+let lastRoastPick = null;
+let roastTimer = null;
+
+function playRoastSound() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    // Descending "wah wah" — the sad trombone of draft picks
+    [[330, 0], [262, 0.16], [196, 0.34]].forEach(([freq, offset]) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.value = freq;
+      const t = audioCtx.currentTime + offset;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.10, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(t); osc.stop(t + 0.24);
+    });
+  } catch (e) { /* audio blocked — toast still shows */ }
+}
+
+function checkRoast(data) {
+  const log = data.draft_log || [];
+  // Newest roasted pick (log is newest-first)
+  const roasted = log.find(e => e.roast);
+  if (!roasted) return;
+  if (roasted.pick_num === lastRoastPick) return;   // already shown
+  // Don't fire for the whole backlog on first load / page refresh
+  const isFresh = roasted.pick_num >= (data.total_picks || 0) - 1;
+  lastRoastPick = roasted.pick_num;
+  if (!isFresh) return;
+
+  const toast = document.getElementById('roastToast');
+  document.getElementById('roastLabel').textContent = roasted.roast.label;
+  document.getElementById('roastWho').textContent =
+    `${roasted.team.toUpperCase()} — P${roasted.pick_num}: ${roasted.player.toUpperCase()}`;
+  document.getElementById('roastReason').textContent = roasted.roast.reason;
+
+  toast.style.display = 'block';
+  requestAnimationFrame(() => toast.classList.add('show'));
+  playRoastSound();
+
+  clearTimeout(roastTimer);
+  roastTimer = setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => { toast.style.display = 'none'; }, 300);
+  }, 7000);
+}
+
+// ── Target queue ──────────────────────────────────────────────────────────
+let targetQueue = [];
+try { targetQueue = JSON.parse(localStorage.getItem('targetQueue') || '[]'); } catch (e) { targetQueue = []; }
+
+function saveQueue() {
+  try { localStorage.setItem('targetQueue', JSON.stringify(targetQueue)); } catch (e) {}
+}
+
+function toggleTarget(name) {
+  const i = targetQueue.indexOf(name);
+  if (i >= 0) targetQueue.splice(i, 1); else targetQueue.push(name);
+  saveQueue();
+  renderQueue();
+  renderBoard();
+  if (appState) renderRecs(appState.recommendations, appState.current_round, appState.next_pick_is_mine);
+}
+
+function starHtml(name) {
+  const on = targetQueue.includes(name);
+  const safe = name.replace(/"/g, '&quot;');
+  return `<button class="star-btn ${on ? 'starred' : ''}" data-player="${safe}"
+    onclick="event.stopPropagation(); toggleTarget(this.dataset.player)"
+    title="${on ? 'Remove from targets' : 'Add to targets'}">${on ? '★' : '☆'}</button>`;
+}
+
+function renderQueue() {
+  const panel = document.getElementById('queuePanel');
+  const drafted = new Set((appState && appState.drafted) || []);
+  document.getElementById('queueCount').textContent = targetQueue.length;
+
+  if (!targetQueue.length) {
+    panel.innerHTML = '<div class="no-picks" style="padding:12px; font-size:10px">▸ CLICK THE ☆ NEXT TO ANY PLAYER<br>IN TOP PICKS OR PLAYER BOARD</div>';
+    return;
+  }
+  panel.innerHTML = targetQueue.map(name => {
+    const sniped = drafted.has(name);
+    return `<div class="queue-row ${sniped ? 'sniped' : ''}">
+      ${starHtml(name)}
+      <span class="queue-name">${name}</span>
+      ${sniped ? '<span class="queue-sniped-tag">SNIPED</span>' : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Position run ticker ───────────────────────────────────────────────────
+function renderPosRun(data) {
+  const el = document.getElementById('posRunTicker');
+  const run = data.position_run;
+  if (!run || !(data.live || data.demo)) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.textContent = `▲ ${run.position} RUN — ${run.count} OF LAST ${run.window} PICKS. ${run.position} SUPPLY DROPPING.`;
+}
+
+// ── Snipe risk: will a player survive until my next turn? ─────────────────
+function snipeInfo(data) {
+  const slots = data.my_pick_slots || [];
+  const next = data.next_pick_num || 1;
+  if (!slots.length || next > GRID_TEAMS * GRID_ROUNDS) return null;
+  const onClock = !!data.next_pick_is_mine;
+  // opponent picks between now and my next relevant turn
+  const mineAfter = slots.find(s => s > next);
+  const nextMine  = onClock ? next : slots.find(s => s >= next);
+  const k = onClock
+    ? (mineAfter ? mineAfter - next - 1 : null)
+    : (nextMine ? nextMine - next : null);
+  return { onClock, picksUntil: onClock ? 0 : k, k, targetPick: onClock ? mineAfter : nextMine };
+}
+
+function snipeVerdict(name, k, availBoard) {
+  if (k == null || !availBoard || !availBoard.length) return '';
+  // Crowd rank among available players — percent_owned tracks public ADP
+  const crowd = [...availBoard].sort((a, b) =>
+    (b.percent_owned - a.percent_owned) || (a.overall_rank - b.overall_rank));
+  const r = crowd.findIndex(x => x.name === name) + 1;
+  const tip = `Crowd rank #${r || '150+'} of available players vs ${k} opponent pick${k === 1 ? '' : 's'} before your turn`;
+  const badge = (cls, txt) => `<span class="snipe-badge snipe-${cls}" title="${tip}">${txt}</span>`;
+  if (!r || r > k * 1.5) return badge('SAFE', '✓ SAFE');
+  if (r > k * 0.75)      return badge('RISKY', '⚠ RISKY');
+  return badge('GONE', '✖ LIKELY GONE');
+}
+
+function renderRecs(recs, currentRound, nextPickIsMine) {
+  const panel = document.getElementById('recPanel');
+  if (!recs || recs.length === 0) {
+    panel.innerHTML = '<div class="no-picks cursor">LOADING RECOMMENDATIONS</div>';
+    return;
+  }
+
+  const maxScore = recs[0].proj_season;
+  const strat = appState ? appState.strategies[appState.strategy] : null;
+  const sn = appState ? snipeInfo(appState) : null;
+
+  let html = '';
+
+  html += recs.map((p, i) => {
+    const pct = Math.round((p.proj_season / maxScore) * 100);
+    const injBadge = p.injured ? `<span class="injury-badge">⚠ ${p.injuryStatus || 'INJ'}</span>` : '';
+    const tagBadge = p.tag ? `<span class="tag-${p.tag}" data-tip="${TAG_TIPS[p.tag]}">${p.tag}</span>` : '';
+    const conflictBadge = conflictBadgeHtml(p.conflicts, p.name);
+    const noteHtml = p.note ? `<div style="font-size:10px; color:var(--green-dim); margin-top:2px; font-style:italic">▸ ${p.note}</div>` : '';
+    const tagDelta = p.tag_delta > 0 ? `<span style="color:#00ffcc">+${p.tag_delta}</span>` :
+                     p.tag_delta < 0 ? `<span style="color:var(--red)">${p.tag_delta}</span>` : '';
+    const byeWeeks = (appState && appState.bye_weeks) || {};
+    const bye = byeWeeks[p.proTeam];
+    const byeStr = bye ? `BYE WK${bye}` : '';
+    return `
+      <div class="rec-card ${i === 0 ? 'top-pick' : ''}" data-player="${p.name.replace(/"/g, '&quot;')}" onclick="selectPlayer(this.dataset.player)">
+        <div style="display:flex; align-items:baseline; gap:8px; flex-wrap:wrap">
+          <span class="rec-rank">#${i + 1}</span>
+          ${starHtml(p.name)}
+          <span class="rec-name">${p.name}${injBadge}${tagBadge}${conflictBadge}</span>
+          <span class="rec-pos ${posClass(p.position)}">${p.position}</span>
+          <span style="font-size:11px; color:var(--green-dim)">${p.proTeam}</span>
+          <span style="font-size:10px; color:var(--green-dim)">OVR #${p.overall_rank}</span>
+          ${byeStr ? `<span style="font-size:10px; color:var(--amber)">${byeStr}</span>` : ''}
+        </div>
+        ${noteHtml}
+        <div style="display:flex; align-items:center; gap:10px; margin-top:5px; flex-wrap:wrap">
+          <span class="rec-stats">PROJ: <span>${p.proj_season}</span> &nbsp;AVG: <span>${p.proj_avg}/wk</span> &nbsp;OWN: <span>${p.percent_owned}%</span></span>
+          <div class="rec-bar-bg" style="flex:1; min-width:80px"><div class="rec-bar-fill" style="width:${pct}%"></div></div>
+          <span style="font-size:10px; color:var(--green-dim)">${pct}%${tagDelta ? ` ${tagDelta}` : ''}</span>
+          ${sn && sn.k != null ? snipeVerdict(p.name, sn.k, appState.available_board) : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  panel.innerHTML = html;
+}
+
+function renderRoster(roster) {
+  const panel = document.getElementById('rosterPanel');
+  document.getElementById('rosterCount').textContent = `${roster.length}/15`;
+
+  if (roster.length === 0) {
+    panel.innerHTML = '<div class="no-picks" style="letter-spacing:1px; padding:20px 12px">▸ YOUR PICKS WILL APPEAR HERE</div>';
+    return;
+  }
+
+  // I14 fix: removed unused slots array
+  panel.innerHTML = roster.map((p, i) => `
+    <div class="roster-row">
+      <span class="roster-slot">R${i+1}</span>
+      <span class="roster-name">${p.name}</span>
+      <span class="rec-pos ${posClass(p.position)}" style="font-size:10px; padding:1px 4px">${p.position}</span>
+      <span class="roster-pts">${p.proj_season}</span>
+    </div>
+  `).join('');
+}
+
+function renderLog(log, totalPicks) {
+  const panel = document.getElementById('logPanel');
+  document.getElementById('pickCount').textContent = `${totalPicks} PICKS`;
+
+  if (!log || log.length === 0) {
+    panel.innerHTML = '<div class="no-picks" style="letter-spacing:1px; padding:20px 12px">▸ PICK FEED WILL POPULATE WHEN DRAFT BEGINS</div>';
+    return;
+  }
+
+  // Full-width chip layout changed back to vertical list (narrow column)
+  panel.innerHTML = log.map(entry => {
+    const g = entry.grade;
+    const cls = g ? (g.grade.startsWith('A') ? 'grade-a' : g.grade.startsWith('B') ? 'grade-b' : 'grade-c') : '';
+    const gradeHtml = g ? `<span class="grade-badge ${cls}" title="${g.note}">${g.grade}</span>` : '';
+    const r = entry.roast;
+    const roastHtml = r ? `<span class="roast-badge" title="${r.reason.replace(/"/g, '&quot;')}">✖</span>` : '';
+    return `
+    <div class="log-entry ${entry.is_mine ? 'mine' : ''}">
+      <span class="log-pick-num">P${entry.pick_num}</span>
+      <span class="log-player">${entry.player}${entry.is_mine ? ' ★' : ''}</span>
+      ${gradeHtml}${roastHtml}
+      <span class="log-team">${entry.is_mine ? 'YOU' : entry.team}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Draft Grid Board (snake grid: 10 teams × 15 rounds) ──────────────────
+const GRID_TEAMS = 10, GRID_ROUNDS = 15;
+
+function togglePanel(bodyId, btnId, storeKey) {
+  const body = document.getElementById(bodyId);
+  const btn  = document.getElementById(btnId);
+  const collapsed = body.classList.toggle('collapsed');
+  btn.textContent = collapsed ? '[+]' : '[−]';
+  try { localStorage.setItem(storeKey, collapsed ? '1' : '0'); } catch (e) {}
+}
+
+// Restore collapsed states from last session
+[['gridBoardWrap', 'gridCollapseBtn', 'gbCollapsed'],
+ ['recPanel', 'recCollapseBtn', 'recCollapsed'],
+ ['playerBoardWrap', 'pbCollapseBtn', 'pbCollapsed'],
+ ['queuePanel', 'queueCollapseBtn', 'queueCollapsed']].forEach(([bodyId, btnId, storeKey]) => {
+  let v = null;
+  try { v = localStorage.getItem(storeKey); } catch (e) {}
+  if (v === '1') {
+    document.getElementById(bodyId).classList.add('collapsed');
+    document.getElementById(btnId).textContent = '[+]';
+  }
+});
+
+function gbShortName(n) {
+  const parts = (n || '').split(' ');
+  if (parts.length < 2) return n;
+  return parts[0][0] + '. ' + parts.slice(1).join(' ');
+}
+
+function gbSlotFor(pickNum) {
+  const r = Math.ceil(pickNum / GRID_TEAMS);
+  const i = (pickNum - 1) % GRID_TEAMS;
+  return (r % 2) ? i + 1 : GRID_TEAMS - i;
+}
+
+function renderDraftGrid(data) {
+  const wrap  = document.getElementById('gridBoardWrap');
+  const label = document.getElementById('gridNextLabel');
+  const log = data.draft_log || [];
+  const draftPos = data.draft_pos || 1;
+  const active = data.live || data.demo;
+
+  // Fallback position lookup for entries without one
+  const posOf = {};
+  (data.available_board || []).forEach(p => { posOf[p.name] = p.position; });
+
+  const cells = {};   // "round-slot" → pick entry
+  const teamOf = {};  // slot → team name (learned from picks, oldest first)
+  let mySlot = null;  // ground truth: where is_mine picks actually land
+  [...log].sort((a, b) => a.pick_num - b.pick_num).forEach(e => {
+    const slot = gbSlotFor(e.pick_num);
+    cells[`${e.round}-${slot}`] = e;
+    if (!(slot in teamOf)) teamOf[slot] = e.team;
+    if (e.is_mine && mySlot === null) mySlot = slot;
+  });
+  const youSlot = mySlot !== null ? mySlot : draftPos;
+
+  const teamShort = slot => {
+    if (slot === youSlot) return 'YOU';
+    const t = teamOf[slot];
+    return t ? t.toUpperCase().slice(0, 9) : `TEAM ${slot}`;
+  };
+
+  const nextPick  = data.next_pick_num || 1;
+  const draftOver = nextPick > GRID_TEAMS * GRID_ROUNDS;
+  const nextRound = draftOver ? 0 : Math.ceil(nextPick / GRID_TEAMS);
+  const nextSlot  = draftOver ? 0 : gbSlotFor(nextPick);
+
+  if (draftOver) {
+    label.textContent = 'DRAFT COMPLETE';
+  } else if (!active && log.length === 0) {
+    label.textContent = 'AWAITING DRAFT';
+  } else {
+    label.textContent = `NEXT: R${nextRound} · ${teamShort(nextSlot)}${nextSlot === youSlot ? ' ⚡' : ''}`;
+  }
+
+  let html = '<table class="grid-board"><thead><tr><th style="width:52px">RND</th>';
+  for (let s = 1; s <= GRID_TEAMS; s++) {
+    html += `<th class="${s === youSlot ? 'my-col' : ''}" title="${teamOf[s] || ''}">${s} · ${teamShort(s)}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  for (let r = 1; r <= GRID_ROUNDS; r++) {
+    html += `<tr><td class="rnd">R${r} ${r % 2 ? '→' : '←'}</td>`;
+    for (let s = 1; s <= GRID_TEAMS; s++) {
+      const e = cells[`${r}-${s}`];
+      const isNext = active && !draftOver && r === nextRound && s === nextSlot && !e;
+      let cls = s === youSlot ? 'my-col-bg' : '';
+      let inner = '';
+      if (e) {
+        const pos = e.position && e.position !== '?' ? e.position : (posOf[e.player] || '?');
+        cls += ` gb-${pos}` + (e.is_mine ? ' gb-mine' : '');
+        inner = `<div class="gb-cell" title="${e.player} — P${e.pick_num}">
+                   <div class="gb-name">${gbShortName(e.player)}</div>
+                   <div class="gb-meta"><span class="gbp-${pos}">${pos}</span> · P${e.pick_num}</div>
+                 </div>`;
+      } else if (isNext) {
+        cls += ' gb-next';
+        inner = `<div class="gb-next-label">▶ ${s === youSlot ? 'YOU — ON CLOCK' : 'ON CLOCK'}</div>`;
+      }
+      html += `<td class="${cls}">${inner}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function boardConflictTip(p) {
+  // Compute lightweight conflict tooltip from available board data client-side
+  if (!appState) return '';
+  const byeWeeks = appState.bye_weeks || {};
+  const myRoster = appState.my_roster || [];
+  const team = p.proTeam;
+  const pos  = p.position;
+  const bye  = byeWeeks[team];
+  const warnings = [];
+  const infos    = [];
+
+  // Bye week flags
+  if (bye === 14) {
+    warnings.push(`WEEK 14 BYE: Misses final reg-season game — could hurt playoff seeding.`);
+  } else if (bye === 11) {
+    infos.push(`WEEK 11 BYE: Heaviest bye week (6 teams off). Waiver wire will be thin.`);
+  }
+
+  // Bye stack
+  if (bye && myRoster.length) {
+    const sameBye = myRoster.filter(r => byeWeeks[r.proTeam] === bye);
+    if (sameBye.length >= 2) {
+      warnings.push(`BYE STACK Wk${bye}: ${sameBye.length + 1} players off same week (${sameBye.map(r=>r.name).join(', ')}).`);
+    } else if (sameBye.length === 1) {
+      infos.push(`BYE NOTE Wk${bye}: You already have ${sameBye[0].name} on same bye week.`);
+    }
+    // Same-position collision — both slots at this position empty the same week
+    const samePosBye = sameBye.filter(r => r.position === pos);
+    if (samePosBye.length) {
+      warnings.push(`${pos} BYE COLLISION Wk${bye}: ${samePosBye.map(r=>r.name).join(', ')} — same position, same bye. You'd start waiver fill-ins at ${pos} that week.`);
+    }
+  }
+
+  // Team stack
+  if (team && myRoster.length) {
+    const sameTeam = myRoster.filter(r => r.proTeam === team);
+    if (sameTeam.length >= 2) {
+      warnings.push(`TEAM STACK ${team}: Would give you ${sameTeam.length + 1} players from ${team}. One injury tanks multiple starters.`);
+    } else if (sameTeam.length === 1) {
+      const existing = sameTeam[0];
+      if (existing.position === 'QB' && ['WR','TE'].includes(pos)) {
+        infos.push(`QB STACK ${team}: Correlated upside — your QB scores, this player likely scores too.`);
+      }
+    }
+  }
+
+  // Bust tag
+  if (p.tag === 'BUST') {
+    warnings.push(`BUST: Public is overvaluing this player. ADP exceeds expert rank.`);
+  }
+
+  if (!warnings.length && !infos.length) return '';
+
+  // Build tooltip text
+  const lines = [
+    ...warnings.map(w => `⚠ ${w}`),
+    ...infos.map(i => `ℹ ${i}`),
+  ];
+  return lines.join('\n');
+}
+
+function boardConflictBadgeHtml(p) {
+  const tip = boardConflictTip(p);
+  if (!tip) return '';
+  const hasWarn = tip.includes('⚠');
+  const cls  = hasWarn ? 'has-warning' : 'has-info';
+  const label = hasWarn ? '⚠ WARN' : 'ℹ INFO';
+  // I19 fix: data-player avoids apostrophe issues in onclick
+  const escaped = tip.replace(/"/g, '&quot;');
+  const safeName = p.name.replace(/"/g, '&quot;');
+  return `<span class="conflict-badge ${cls}" style="font-size:11px" data-tip="${escaped}" data-player="${safeName}" onclick="event.stopPropagation(); showConflicts(this.dataset.player)">
+    ${label}
+  </span>`;
+}
+function renderBoard() {
+  if (!appState) return;
+  const hideDrafted = document.getElementById('hideDrafted').checked;
+  // C4 fix: use full drafted set from server, not truncated draft_log[:30]
+  const drafted = new Set(appState.drafted || appState.draft_log.map(e => e.player));
+
+  let players = appState.available_board;
+
+  // Tag filters
+  const tagFilters = ['VALUE', 'SLEEPER', 'BUST'];
+  if (tagFilters.includes(posFilter)) {
+    players = players.filter(p => p.tag === posFilter);
+  } else if (posFilter !== 'ALL') {
+    players = players.filter(p => p.position === posFilter);
+  }
+
+  const avail = players.filter(p => !drafted.has(p.name));
+  document.getElementById('boardCount').textContent = `${avail.length} AVAILABLE`;
+
+  const body = document.getElementById('boardBody');
+  body.innerHTML = players.slice(0, 150).map((p, idx) => {
+    const isDrafted = drafted.has(p.name);
+    if (hideDrafted && isDrafted) return '';
+    const stratRank = idx + 1;
+    const stratScore = p.strategy_score != null ? p.strategy_score : p.proj_season;
+    // Board sorted by proj_season — rank = overall value rank
+    const byeWeeks = (appState && appState.bye_weeks) || {};
+    const bye = byeWeeks[p.proTeam];
+    const byeCell = bye ? `<span style="color:var(--amber);font-size:12px">Wk${bye}</span>` : `<span style="color:var(--green-dim);font-size:11px">—</span>`;
+    const inj = p.injured ? `<span style="color:var(--red);font-size:10px">⚠ ${p.injuryStatus}</span>` : '';
+    const tagCell = p.tag ? `<span class="tag-${p.tag}" style="font-size:11px" data-tip="${TAG_TIPS[p.tag]}">${p.tag}</span>` : '';
+    const conflictCell = boardConflictBadgeHtml(p);
+    // INTEL: show note, or injury, or bye week, or nothing
+    const noteCell = p.note
+      ? `<span style="font-size:11px; color:var(--green-dim)">${p.note}</span>`
+      : inj
+      ? inj
+      : `<span style="color:var(--green-dim);font-size:11px">${bye ? `BYE WK ${bye}` : '—'}</span>`;
+    const rowClick = !isDrafted ? `data-player="${p.name.replace(/"/g, '&quot;')}" onclick="selectPlayer(this.dataset.player)" style="cursor:pointer"` : '';
+    return `
+      <tr class="${isDrafted ? 'drafted' : ''}" ${rowClick}>
+        <td class="rank-cell">
+          <span style="color:var(--green);font-size:13px;font-weight:bold">#${stratRank}</span>
+          <br><span style="font-size:10px;color:var(--green-dim)">${stratScore}</span>
+        </td>
+        <td class="name-cell">${starHtml(p.name)}${p.name}</td>
+        <td><span class="rec-pos ${posClass(p.position)}" style="font-size:10px">${p.position}</span></td>
+        <td class="team-cell">${p.proTeam}</td>
+        <td class="bye-cell">${byeCell}</td>
+        <td class="pts-cell">${p.proj_season}</td>
+        <td class="avg-cell">${p.proj_avg}</td>
+        <td class="own-cell">${p.percent_owned}%</td>
+        <td>${tagCell}${conflictCell}</td>
+        <td>${noteCell}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function selectPlayer(name) {
+  // In demo mode, clicking a rec card auto-fills the pick input
+  if (appState && appState.demo_waiting_for_pick) {
+    document.getElementById('demoPickInput').value = name;
+    document.getElementById('demoPickError').textContent = '';
+    document.getElementById('demoPickInput').focus();
+    return;
+  }
+  document.getElementById('statusBar').textContent = `SELECTED: ${name.toUpperCase()}`;
+  setTimeout(() => {
+    if (appState) document.getElementById('statusBar').textContent = appState.status;
+  }, 2000);
+}
+
+// ── Demo Mode ─────────────────────────────────────────────────────────────
+let demoActive = false;
+
+function setDemoBtns(running) {
+  // Keep START / STOP / RESET always visible — disable + dim whichever
+  // doesn't apply instead of hiding it, so the full control set stays put.
+  const startBtn = document.getElementById('demoBtn');
+  const stopBtn  = document.getElementById('demoStopBtn');
+  const resetBtn = document.getElementById('demoResetBtn');
+
+  startBtn.disabled = running;
+  startBtn.style.opacity = running ? '0.35' : '1';
+  startBtn.style.cursor = running ? 'default' : 'pointer';
+
+  stopBtn.disabled = !running;
+  stopBtn.style.opacity = running ? '1' : '0.35';
+  stopBtn.style.cursor = running ? 'pointer' : 'default';
+
+  resetBtn.disabled = !running;
+  resetBtn.style.opacity = running ? '1' : '0.35';
+  resetBtn.style.cursor = running ? 'pointer' : 'default';
+}
+
+async function startDemo() {
+  const pos = parseInt(document.getElementById('draftPos').value) || 5;
+  if (pos < 1 || pos > 10) { alert('Set your draft position (1-10) first.'); return; }
+  const res = await fetch('/api/demo/start', {method:'POST'});
+  const data = await res.json();
+  if (!data.ok) { alert('Error: ' + (data.error || 'Could not start demo')); return; }
+  demoActive = true;
+  setDemoBtns(true);
+}
+
+async function stopDemo() {
+  await fetch('/api/demo/stop', {method:'POST'});
+  demoActive = false;
+  setDemoBtns(false);
+  document.getElementById('demoPickPanel').style.display = 'none';
+}
+
+async function resetDemo() {
+  // W12 fix: poll server until demo_running=false before restarting
+  await fetch('/api/demo/stop', {method:'POST'});
+  demoActive = false;
+  let retries = 30;
+  while (retries-- > 0) {
+    const s = await fetch('/api/state').then(r => r.json()).catch(() => ({}));
+    if (!s.demo_running) break;
+    await new Promise(r => setTimeout(r, 200));
+  }
+  await startDemo();
+}
+
+async function setDemoSpeed(val) {
+  await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({demo_speed: parseInt(val)})});
+}
+
+async function submitDemoPick() {
+  const input = document.getElementById('demoPickInput');
+  const errEl = document.getElementById('demoPickError');
+  const name = input.value.trim();
+  if (!name) { errEl.textContent = 'Type a player name.'; return; }
+
+  const res = await fetch('/api/demo/pick', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({player: name})
+  });
+  const data = await res.json();
+  if (data.ok) {
+    input.value = '';
+    errEl.textContent = '';
+    document.getElementById('demoPickPanel').style.display = 'none';
+  } else {
+    errEl.textContent = data.error || 'Error picking player.';
+  }
+}
+
+// ── Main poll loop ─────────────────────────────────────────────────────────
+async function poll() {
+  try {
+    const res = await fetch('/api/state');
+    const data = await res.json();
+    appState = data;
+
+    // Status
+    document.getElementById('statusBar').textContent = data.status;
+    const strat = data.strategies[data.strategy];
+    document.getElementById('stratLabel').textContent = strat ? strat.label : data.strategy.toUpperCase();
+    // Show source as title attribute on the badge
+    const stratBadge = document.getElementById('stratLabel');
+    if (strat) stratBadge.title = `SOURCE: ${strat.source}`;
+    document.getElementById('roundDisplay').textContent = `R${data.current_round || 1}`;
+    document.getElementById('pickDisplay').textContent = data.next_pick_num || '-';
+
+    // Keep LIVE button in sync with server truth (covers page reload mid-draft)
+    if (data.live !== liveMode) {
+      liveMode = data.live;
+      setLiveBtn(liveMode);
+    }
+
+    // Keep draft position input synced to server state (unless user is editing it)
+    const dpInput = document.getElementById('draftPos');
+    if (dpInput && document.activeElement !== dpInput && data.draft_pos) {
+      dpInput.value = data.draft_pos;
+    }
+
+    // "Picks until you" countdown
+    const sn = snipeInfo(data);
+    const untilEl = document.getElementById('untilYouDisplay');
+    if (!sn || sn.picksUntil == null) {
+      untilEl.textContent = '-';
+      untilEl.style.color = 'var(--green-dim)';
+    } else if (sn.onClock) {
+      untilEl.textContent = '⚡ NOW';
+      untilEl.style.color = 'var(--amber)';
+      untilEl.style.textShadow = '0 0 8px var(--amber)';
+    } else {
+      untilEl.textContent = sn.picksUntil;
+      untilEl.style.color = sn.picksUntil <= 3 ? 'var(--amber)' : 'var(--green)';
+      untilEl.style.textShadow = sn.picksUntil <= 3 ? '0 0 8px var(--amber)' : 'none';
+    }
+
+        if (data.last_poll > 0) {
+      const secs = Math.round(Date.now() / 1000 - data.last_poll);
+      document.getElementById('lastPoll').textContent = `LAST SYNC: ${secs}S AGO`;
+    }
+
+    // My turn banner (live mode)
+    const banner = document.getElementById('myTurnBanner');
+    if (data.next_pick_is_mine && data.live && !data.demo) {
+      banner.classList.add('visible');
+    } else {
+      banner.classList.remove('visible');
+    }
+
+    // Demo pick panel — show when it's your turn in demo
+    const demoPanel = document.getElementById('demoPickPanel');
+    if (data.demo_waiting_for_pick) {
+      demoPanel.style.display = 'block';
+      // Auto-focus input if not already filled
+      const input = document.getElementById('demoPickInput');
+      if (!input.value) input.focus();
+    } else {
+      demoPanel.style.display = 'none';
+    }
+
+    // Keep demo button enabled/disabled state in sync with server truth —
+    // covers external stop, and a page reload while a demo is mid-run.
+    if (data.demo !== demoActive) {
+      demoActive = data.demo;
+      setDemoBtns(demoActive);
+      if (!demoActive) document.getElementById('demoPickPanel').style.display = 'none';
+    }
+
+    // Render sections
+    renderRecs(data.recommendations, data.current_round, data.next_pick_is_mine);
+    renderRoster(data.my_roster);
+    checkClockAlert(data);
+    checkRoast(data);
+    renderPosRun(data);
+    renderLog(data.draft_log, data.total_picks);
+    renderDraftGrid(data);
+    renderQueue();
+    renderBoard();
+
+  } catch(e) {
+    document.getElementById('statusBar').textContent = 'CONNECTION ERROR — RETRYING...';
+  }
+}
+
+// I13 fix: removed duplicate/dead Bo Jackson canvas code (no #rbCanvas element in HTML)
+
+// ── Strategy Modal ────────────────────────────────────────────────────────
+
+// I13 fix: second drawBoJackson + dead runner state removed
+
+// ── Conflict Modal ────────────────────────────────────────────────────────
+function closeConflictModalBtn() {
+  document.getElementById('conflictModal').classList.remove('open');
+}
+function closeConflictModal(e) {
+  if (e.target === document.getElementById('conflictModal')) closeConflictModalBtn();
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeConflictModalBtn();
+    closeStratModal();
+  }
+});
+
+async function showConflicts(playerName) {
+  const res = await fetch(`/api/conflicts?player=${encodeURIComponent(playerName)}`);
+  const data = await res.json();
+  if (!data.ok || !data.conflicts.length) {
+    // No conflicts — brief status flash
+    document.getElementById('statusBar').textContent = `✓ NO CONFLICTS — ${playerName.toUpperCase()}`;
+    setTimeout(() => { if(appState) document.getElementById('statusBar').textContent = appState.status; }, 2500);
+    return;
+  }
+
+  const critCount = data.conflicts.filter(c => c.severity === 'critical').length;
+  const warnCount = data.conflicts.filter(c => c.severity === 'warning').length;
+  const infoCount = data.conflicts.filter(c => c.severity === 'info').length;
+  const byeWeek  = data.bye_week ? `BYE: WK ${data.bye_week}` : '';
+
+  const borderColor = critCount ? 'var(--red)' : warnCount ? 'var(--amber)' : '#00ffcc';
+  document.getElementById('conflictModalBox').style.borderColor = borderColor;
+  document.getElementById('conflictModalTitle').style.color = borderColor;
+  document.getElementById('conflictModalTitle').style.textShadow = `0 0 10px ${borderColor}88`;
+  document.getElementById('conflictModalTitle').textContent = `⚠ ${data.player.toUpperCase()} — CONFLICT ANALYSIS`;
+
+  let html = `<div class="conflict-severity-bar">`;
+  if (critCount) html += `<span class="sev-pill conflict-critical">🔴 ${critCount} CRITICAL</span>`;
+  if (warnCount) html += `<span class="sev-pill conflict-warning">🟡 ${warnCount} WARNING</span>`;
+  if (infoCount) html += `<span class="sev-pill conflict-info">🟢 ${infoCount} INFO</span>`;
+  if (byeWeek)   html += `<span style="margin-left:auto; color:var(--green-dim); font-size:11px">${byeWeek}</span>`;
+  html += `</div>`;
+
+  html += data.conflicts.map(c => `
+    <div class="conflict-entry conflict-${c.severity}">
+      <div class="conflict-entry-title">${c.title}</div>
+      <div class="conflict-entry-detail">${c.detail}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('conflictModalBody').innerHTML = html;
+  document.getElementById('conflictModal').classList.add('open');
+}
+
+function conflictBadgeHtml(conflicts, playerName) {
+  if (!conflicts || !conflicts.length) return '';
+  const crit = conflicts.filter(c => c.severity === 'critical').length;
+  const warn = conflicts.filter(c => c.severity === 'warning').length;
+  const cls  = crit ? 'has-critical' : warn ? 'has-warning' : 'has-info';
+  const label = crit ? `⚠ ${crit} CRITICAL` : warn ? `⚠ ${warn} WARN` : `ℹ INFO`;
+  // I19 fix: use data-player attribute to avoid apostrophe escaping issues in onclick
+  const safeName = playerName.replace(/"/g, '&quot;');
+  return `<span class="conflict-badge ${cls}" data-player="${safeName}" onclick="event.stopPropagation(); showConflicts(this.dataset.player)">
+    ${label}
+  </span>`;
+}
+
+// ── Strategy Modal ────────────────────────────────────────────────────────
+const STRATEGY_DETAILS = {
+  'league-history': {
+    warning: null,
+    core: [
+      'Built from the champion drafts you enter in LEAGUE_HISTORY (server.py).',
+      'In the example data, every champion opened WR or RB — no QB-first winners.',
+      'Mobile QBs landed in R3-R5 for two of the three example champions.',
+      'The 2024 example champion used a WR1 → RB → RB → RB formula.',
+      'Zero-RB is viable here — the 2025 example champion went WR-WR-WR first.',
+    ],
+    roundLogic: [
+      ['R1','WR or RB','NO QB — league history says this loses'],
+      ['R2','RB or WR','Start loading backfield depth'],
+      ['R3','RB, WR, or mobile QB','Hurts/Daniels tier here if available'],
+      ['R4','RB, mobile QB, WR','Lock in QB by here at latest'],
+      ['R5','QB if not taken, WR, RB','Must have QB by end of R5'],
+      ['R6-8','WR, RB, TE','Fill depth and start FLEX slots'],
+      ['R9-11','RB handcuffs, WR sleepers','Target VALUE-tagged players'],
+      ['R12-13','TE if waited, WR, RB','Late TE or streaming pivot'],
+      ['R14-15','K, dart RB/WR','Kicker last — always'],
+    ],
+    leagueNote: 'Example data — 2023: Henry→Lamb→Hurts→Gibbs | 2024: Amon-Ra→Henry→White→Cook | 2025: Amon-Ra→Nacua→Higgins→Daniels. Replace with your own league history.',
+  },
+  'rb-heavy': {
+    warning: null,
+    core: [
+      'RB scarcity is the central argument — true bellcow RBs cannot be acquired on waivers.',
+      'Lock 2 RBs in R1-R3, add a 3rd in R4-R5 for FLEX depth.',
+      'WRs are more replaceable — Week 6 waiver wire has startable WRs, not RBs.',
+      '10-team leagues have shallower waiver pools — front-load RB now.',
+      'Best from picks 9-12 (late snake) where elite WRs are gone but quality RBs remain.',
+    ],
+    roundLogic: [
+      ['R1','RB or WR','Take the best RB if elite tier available'],
+      ['R2','RB, WR','Lock in second RB here if missed R1'],
+      ['R3','RB, WR, TE','Third RB or elite WR — no QB yet'],
+      ['R4','WR, RB, TE','Balance with receiver'],
+      ['R5','WR, TE, QB','QB window opens here'],
+      ['R6','QB, WR, RB','Latest to take QB'],
+      ['R7-10','WR, RB','Fill bench depth'],
+      ['R11-13','RB handcuffs, TE, WR','Insurance picks'],
+      ['R14-15','K','Dead last'],
+    ],
+    leagueNote: 'No example champion used pure Robust RB — the 2023 draft (Henry→Lamb→Hurts→Gibbs) is the closest hybrid.',
+  },
+  'hero-rb': {
+    warning: null,
+    core: [
+      'One elite RB anchor gives you a stable, high-floor RB1 with weekly upside — then WR depth carries the roster.',
+      'WRs are deeper and more consistent; capping your early RB exposure at one limits injury risk vs Robust RB.',
+      'Widely cited (FantasyPros, Fantasy Life, Yahoo roundtables) as the most balanced default strategy.',
+      'Backfield depth is rebuilt in R7+ with volume/committee backs and upside darts — not early capital.',
+      'Variation: "Super Hero RB" takes two early RBs before the WR pivot — that path is ROBUST RB here.',
+    ],
+    roundLogic: [
+      ['R1','Elite RB (Gibbs / Bijan / CMC tier)','Anchor pick — NO QB'],
+      ['R2','WR or elite TE','Backfield is done for now'],
+      ['R3-4','WR / TE stack','RB and QB blocked — build the pass-catching core'],
+      ['R5','WR, QB window opens','Take a QB if a top tier falls'],
+      ['R6','QB, RB re-entry, WR','Lock in QB by here'],
+      ['R7-10','RB volume darts, WR depth','Rebuild the backfield with upside'],
+      ['R11-13','RB handcuffs, TE if waited, WR sleepers','Target VALUE tags'],
+      ['R14-15','K, dart RB','Kicker last — always'],
+    ],
+    leagueNote: 'Closest example precedent: the 2023 champion anchored Henry R1 → Lamb → Hurts — one early RB, then receivers and a mobile QB.',
+  },
+  'late-qb': {
+    warning: null,
+    core: [
+      'QB scoring flattens hard after the elite tier — the gap from QB8 to QB15 is far smaller than the same gap at RB/WR.',
+      'Seven straight rounds of RB/WR builds overwhelming skill-position depth while opponents burn picks on QBs.',
+      'Championship-rate data (JJ Zachariason\'s "Late-Round QB", DraftStrategy.io) supports waiting.',
+      'Consider drafting TWO late QBs and streaming the better weekly matchup.',
+      'Exception: superflex / 2-QB leagues, where QBs go much earlier.',
+    ],
+    roundLogic: [
+      ['R1-2','RB / WR only','QB hard-blocked'],
+      ['R3-5','WR, RB, TE','Keep hammering skill positions'],
+      ['R6-7','WR, RB, TE','Still no QB — hold the line'],
+      ['R8-10','QB window — best remaining starter','Grab yours before the late run ends'],
+      ['R11-12','RB / WR depth, 2nd QB option R12','Streaming partner'],
+      ['R13','RB / WR upside','Ceiling over floor this late'],
+      ['R14-15','K, 2nd QB or dart RB','Kicker last — always'],
+    ],
+    leagueNote: 'All three example champions waited on QB (R3-R5). Late-Round QB pushes that logic further still.',
+  },
+  'zero-rb': {
+    warning: '⚠ REQUIRES ACTIVE WAIVER MANAGEMENT ALL SEASON. If all WRs bust simultaneously, team collapses.',
+    core: [
+      'Popularized by Shawn Siegele (RotoViz) — validated annually by FantasyPros and ETR.',
+      'RBs are most injury-prone position; committee backfields make high-ADP RBs volatile.',
+      'WRs are more durable and consistent. Targeting 2-3 elite WRs early creates positional advantage.',
+      'Best from picks 4-8 in 10-team snake where elite WRs still fall to you.',
+      'The 2025 example champion used this shape: Amon-Ra → Nacua → Higgins → QB in R4.',
+    ],
+    roundLogic: [
+      ['R1','WR or TE','Elite WR — no RB'],
+      ['R2','WR, TE','Stack another elite WR'],
+      ['R3','WR, QB, TE','Third WR or mobile QB'],
+      ['R4','WR, QB','Lock in QB here'],
+      ['R5-13','RB, WR','Begin loading RBs from value tier'],
+      ['R14-15','K','Kicker last'],
+    ],
+    leagueNote: 'The 2025 example champion went WR→WR→WR→QB — evidence Zero-RB can win.',
+  },
+  'hero-qb': {
+    warning: '⚠ WARNING: No champion in the example data has ever used this strategy. Spending R1 on a QB is contrarian.',
+    core: [
+      'Source: DraftSharks (Shane Hallam) — "Elite QB or Late-Round QB? The Smarter Strategy" 2026.',
+      'Locks Josh Allen or Lamar Jackson R1 — the weekly ceiling advantage is enormous.',
+      'Josh Allen projects 421 pts (24.8/wk) — 47 pts more than next QB. That gap = 3 wins.',
+      'After securing hero QB, pivot hard to RB/WR in R2-R4 to build a complete roster.',
+      'Risk: if hero QB is injured, no elite replacement exists.',
+    ],
+    roundLogic: [
+      ['R1','QB ONLY','Josh Allen or Lamar Jackson — if neither available, reconsider'],
+      ['R2-3','RB, WR','Hard pivot to skill positions'],
+      ['R4','WR, RB','Continue loading receivers'],
+      ['R5','TE, WR','Anchor TE if value exists'],
+      ['R6-10','WR, RB','Fill depth'],
+      ['R11-13','TE, WR, RB','Sleeper picks'],
+      ['R14-15','K','Last pick'],
+    ],
+    leagueNote: 'Example history: 0 of 3 champions used a QB in R1.',
+  },
+  'balanced': {
+    warning: null,
+    core: [
+      'Source: The Ringer (Danny Heifetz) — "10 Rules to Win Your Fantasy Football League."',
+      'Best Player Available — highest projected value wins regardless of position or round.',
+      'Positional need used only as a tiebreaker between equal-value players.',
+      'Key Ringer rule: when two players are close in value, take the RB in a 10-team 2WR league.',
+      'Anti-anchoring: use a DIFFERENT site\'s rankings from where you\'re drafting to avoid bias.',
+      'Mobile QBs worth 3× passing yards — Lamar/Allen/Daniels/Hurts have disproportionate value.',
+    ],
+    roundLogic: [
+      ['R1','RB, WR, QB','Pure BPA — whoever is ranked highest'],
+      ['R2','RB, WR','Best available'],
+      ['R3','WR, RB, TE','Fill needs with BPA'],
+      ['R4','WR, RB, TE, QB','QB window opens if great value'],
+      ['R5','TE, WR, QB','Anchor TE or QB if elite falls'],
+      ['R6-10','QB, WR, RB','Fill all starter slots'],
+      ['R11-13','RB, WR, TE','Bench depth'],
+      ['R14-15','K','Dead last'],
+    ],
+    leagueNote: 'The 2024 example champion followed loose BPA: Amon-Ra (WR1 by value) → Henry (RB1 by value) → White → Cook.',
+  },
+};
+
+function openStratModal() {
+  if (!appState) return;
+  const key = appState.strategy;
+  const strat = appState.strategies[key];
+  if (!strat) return;
+  // Fall back to the server-provided description if no detailed briefing exists,
+  // so the INFO button never silently does nothing.
+  const detail = STRATEGY_DETAILS[key] || {
+    warning: null,
+    core: [strat.desc],
+    roundLogic: [],
+    leagueNote: 'No league-specific notes for this strategy yet.',
+  };
+
+  document.getElementById('modalTitle').textContent = `▸ ${strat.label}`;
+
+  let html = `<div class="modal-source">SOURCE: ${strat.source}</div>`;
+
+  if (detail.warning) {
+    html += `<div style="border:1px solid var(--red); background:rgba(255,60,60,0.05); padding:10px 14px; margin-bottom:16px; color:var(--red); font-size:12px; letter-spacing:1px">${detail.warning}</div>`;
+  }
+
+  html += `<div class="modal-section">
+    <div class="modal-section-title">▸ CORE PHILOSOPHY</div>
+    <ul>${detail.core.map(c => `<li>${c}</li>`).join('')}</ul>
+  </div>`;
+
+  html += `<div class="modal-section">
+    <div class="modal-section-title">▸ ROUND-BY-ROUND BLUEPRINT</div>
+    <table class="modal-round-table">
+      <thead><tr><th>ROUND</th><th>TARGET</th><th>AVOID / NOTE</th></tr></thead>
+      <tbody>
+        ${detail.roundLogic.map(([rnd, target, note]) => `
+          <tr>
+            <td class="td-round">${rnd}</td>
+            <td class="td-target">${target}</td>
+            <td class="td-avoid">${note || ''}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+  html += `<div class="modal-league-win">
+    <div class="modal-league-label">▸ LEAGUE HISTORY</div>
+    <div style="font-size:11px; color:var(--green-dim)">${detail.leagueNote}</div>
+  </div>`;
+
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('stratModal').classList.add('open');
+}
+
+function closeStratModal() {
+  document.getElementById('stratModal').classList.remove('open');
+}
+
+function closeModal(e) {
+  // Close if clicking overlay background (not the box itself)
+  if (e.target === document.getElementById('stratModal')) {
+    closeStratModal();
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+setDemoBtns(false);  // STOP/RESET start disabled until poll() confirms real state
+boot().then(() => {
+  poll();
+  setInterval(poll, 5000);
+});
+</script>
+</body>
+</html>
