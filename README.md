@@ -4,11 +4,21 @@ A CRT-styled live draft assistant for ESPN fantasy football leagues. Connects to
 your league through the ESPN API, tracks picks as they happen, and recommends who
 to take next based on the draft strategy you choose.
 
+![Fantasy Football Terminal — live draft view](docs/screenshot.png)
+
+*Mid-draft in demo mode: strategy-driven recommendations with snipe-risk verdicts,
+the live snake board, roster tracking, and the pick feed with grades and roasts.*
+
+It boots like the machine it pretends to be:
+
 ```
 > BIOS v2.6.1 - FANTASY FOOTBALL SYSTEMS INC.
 > MEMORY TEST: 640K OK [OK]
 > INITIALIZING ESPN API INTERFACE...
-> DRAFT ASSISTANT MODULE: LOADED [OK]
+> CROSS-REFERENCING LEAGUE CHAMPIONSHIP DATA...
+> HERO QB WIN COUNT: 0. STILL LOADING ANYWAY.
+> ALL SYSTEMS NOMINAL. [OK]
+> THIS TERMINAL ACCEPTS NO RESPONSIBILITY FOR YOUR PICKS
 ```
 
 ---

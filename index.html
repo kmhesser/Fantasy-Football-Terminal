@@ -2003,6 +2003,13 @@ async function poll() {
       dpInput.value = data.draft_pos;
     }
 
+    // Keep strategy dropdown synced to server state
+    const stratSel = document.getElementById('stratSelect');
+    if (stratSel && data.strategy && stratSel.value !== data.strategy) {
+      stratSel.value = data.strategy;
+      strategy = data.strategy;
+    }
+
     // "Picks until you" countdown
     const sn = snipeInfo(data);
     const untilEl = document.getElementById('untilYouDisplay');
