@@ -25,7 +25,9 @@ It boots like the machine it pretends to be:
 
 ## Features
 
-- **Live pick tracking** — polls your ESPN draft and updates as picks come in
+- **Live pick tracking** — polls your ESPN draft every 5 seconds; player
+  projections and injury status re-pull every 10 minutes so a long session
+  doesn't drift out of date
 - **Snake draft board** — full teams × rounds grid, color-coded by position, with
   your column highlighted and the current pick flagged
 - **Seven draft strategies** — League History, Hero RB, Balanced BPA, Late-Round QB,
@@ -118,6 +120,9 @@ Then open <http://localhost:8888>. On Windows, double-click `START_DRAFT.bat`
 3. **Select a strategy** (click `? INFO` for its full blueprint)
 4. Click **ACTIVATE LIVE** when the draft begins — it stays red until you do
 5. Watch the pick feed; the screen flashes when you're on the clock
+
+Picks refresh every 5 seconds. Projections and injury status refresh every 10
+minutes (tune `BOARD_REFRESH_SECONDS` in `server.py`).
 
 This tool is **read-only**. It never submits a pick. Whoever runs your draft still
 enters every selection — call out your pick, then let the terminal catch up.

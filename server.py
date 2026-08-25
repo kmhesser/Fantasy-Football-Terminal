@@ -42,6 +42,7 @@ MY_TEAM_ID   = 1      # ← your team's ID within the league
 TOTAL_TEAMS  = 10     # ← teams in your league
 TOTAL_ROUNDS = 15     # ← rounds in your draft
 POLL_SECONDS = 5
+BOARD_REFRESH_SECONDS = 600   # re-pull player projections/injuries every 10 min
 
 STARTER_NEEDS = {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'FLEX': 2, 'K': 1}
 DEMO_CHAOS_RATE = 0.10   # odds a demo opponent makes a deliberately bad pick
@@ -599,6 +600,7 @@ state = {
     'draft_log': [],
     'my_roster': [],
     'last_poll': 0,
+    'last_board_refresh': 0,
     'total_picks': 0,
     'strategy': 'league-history',
     'draft_pos': 5,
@@ -884,6 +886,30 @@ def score_full_board(board, drafted, my_roster, strategy_key, current_round):
     return result
 
 
+def refresh_board(existing):
+    """
+    Re-pull player data and merge it into the existing board.
+
+    build_board() reads ESPN's free-agent list, which drops players as they
+    get drafted — so a straight replacement would erase everyone already
+    taken. Instead we update the rows that come back, keep any row that has
+    disappeared (i.e. was drafted), and append genuinely new players.
+    """
+    fresh = build_board()
+    if not fresh:
+        return existing
+    by_name = {p['name']: p for p in fresh}
+    merged = []
+    for p in existing:
+        f = by_name.pop(p['name'], None)
+        merged.append({**p, **f} if f else p)
+    merged.extend(by_name.values())
+    merged.sort(key=lambda x: x['proj_season'], reverse=True)
+    for i, p in enumerate(merged, 1):
+        p['overall_rank'] = i
+    return merged
+
+
 def poll_draft():
     with state_lock:
         state['status'] = 'LOADING PLAYER BOARD...'
@@ -902,8 +928,27 @@ def poll_draft():
         return
 
     name_to_info = {p['name']: p for p in board}
+    last_board_refresh = time.time()
+    with state_lock:
+        state['last_board_refresh'] = int(last_board_refresh)
 
     while True:
+        # Keep projections and injury status current during long sessions.
+        # Runs whether or not live mode is on, so the board is fresh by the
+        # time the draft actually starts.
+        if time.time() - last_board_refresh >= BOARD_REFRESH_SECONDS:
+            last_board_refresh = time.time()
+            try:
+                with state_lock:
+                    current = state['board'][:]
+                merged = refresh_board(current)          # network call, outside the lock
+                with state_lock:
+                    state['board'] = merged
+                    state['last_board_refresh'] = int(last_board_refresh)
+                name_to_info = {p['name']: p for p in merged}
+            except Exception:
+                pass    # keep the existing board if ESPN is unreachable
+
         # C3 fix: read state['live'] under lock
         with state_lock:
             is_live = state['live']
@@ -1216,6 +1261,7 @@ def get_state():
             'drafted':               list(state['drafted']),  # C4: full set not just log[:30]
             'board_ready':           state['board_ready'],
             'last_poll':             state['last_poll'],
+            'last_board_refresh':    state.get('last_board_refresh', 0),
             'demo':                  state['demo'],
             'demo_running':          state['demo_running'],
             'demo_waiting_for_pick': state['demo_waiting_for_pick'],
