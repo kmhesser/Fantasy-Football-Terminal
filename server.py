@@ -601,6 +601,7 @@ state = {
     'my_roster': [],
     'last_poll': 0,
     'last_board_refresh': 0,
+    'board_refreshing': False,
     'total_picks': 0,
     'strategy': 'league-history',
     'draft_pos': 5,
@@ -910,6 +911,24 @@ def refresh_board(existing):
     return merged
 
 
+
+def do_board_refresh():
+    """Refresh the board in place. Safe to call from any thread."""
+    try:
+        with state_lock:
+            current = state['board'][:]
+        merged = refresh_board(current)          # network call, outside the lock
+        with state_lock:
+            state['board'] = merged
+            state['last_board_refresh'] = int(time.time())
+        return True
+    except Exception:
+        return False                             # keep the existing board
+    finally:
+        with state_lock:
+            state['board_refreshing'] = False
+
+
 def poll_draft():
     with state_lock:
         state['status'] = 'LOADING PLAYER BOARD...'
@@ -927,27 +946,25 @@ def poll_draft():
             state['status'] = f'ERROR: {e}'
         return
 
-    name_to_info = {p['name']: p for p in board}
-    last_board_refresh = time.time()
     with state_lock:
-        state['last_board_refresh'] = int(last_board_refresh)
+        state['last_board_refresh'] = int(time.time())
 
     while True:
         # Keep projections and injury status current during long sessions.
         # Runs whether or not live mode is on, so the board is fresh by the
-        # time the draft actually starts.
-        if time.time() - last_board_refresh >= BOARD_REFRESH_SECONDS:
-            last_board_refresh = time.time()
-            try:
-                with state_lock:
-                    current = state['board'][:]
-                merged = refresh_board(current)          # network call, outside the lock
-                with state_lock:
-                    state['board'] = merged
-                    state['last_board_refresh'] = int(last_board_refresh)
-                name_to_info = {p['name']: p for p in merged}
-            except Exception:
-                pass    # keep the existing board if ESPN is unreachable
+        # time the draft actually starts. The timestamp lives in state so a
+        # manual refresh also resets this schedule.
+        with state_lock:
+            due = time.time() - state.get('last_board_refresh', 0) >= BOARD_REFRESH_SECONDS
+            busy = state.get('board_refreshing', False)
+            if due and not busy:
+                state['board_refreshing'] = True
+        if due and not busy:
+            do_board_refresh()
+
+        # Rebuilt each pass so manual refreshes are picked up right away
+        with state_lock:
+            name_to_info = {p['name']: p for p in state['board']}
 
         # C3 fix: read state['live'] under lock
         with state_lock:
@@ -1262,6 +1279,7 @@ def get_state():
             'board_ready':           state['board_ready'],
             'last_poll':             state['last_poll'],
             'last_board_refresh':    state.get('last_board_refresh', 0),
+            'board_refreshing':      state.get('board_refreshing', False),
             'demo':                  state['demo'],
             'demo_running':          state['demo_running'],
             'demo_waiting_for_pick': state['demo_waiting_for_pick'],
@@ -1300,6 +1318,19 @@ async def set_config(data: dict):
             state['demo_speed'] = max(1, min(10, int(data['demo_speed'])))
         if 'demo_chaos' in data:
             state['demo_chaos'] = max(0.0, min(1.0, float(data['demo_chaos'])))
+    return {'ok': True}
+
+
+@app.post('/api/board/refresh')
+async def board_refresh():
+    """Manually re-pull player projections and injury status."""
+    with state_lock:
+        if not state['board_ready']:
+            return JSONResponse({'ok': False, 'error': 'Board not loaded yet'}, status_code=400)
+        if state.get('board_refreshing'):
+            return JSONResponse({'ok': False, 'error': 'Refresh already running'}, status_code=409)
+        state['board_refreshing'] = True
+    threading.Thread(target=do_board_refresh, daemon=True).start()
     return {'ok': True}
 
 

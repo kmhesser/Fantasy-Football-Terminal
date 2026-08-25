@@ -1115,6 +1115,14 @@
         </select>
       </div>
     </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">▸ PLAYER DATA</div>
+      <div style="display:flex; gap:6px; align-items:center">
+        <button class="btn" id="refreshBtn" onclick="refreshBoardData()"
+                title="Re-pull projections and injury status from ESPN">&#8635; REFRESH</button>
+        <span id="dataAge" style="font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--green-dim); letter-spacing:1px; white-space:nowrap">&mdash;</span>
+      </div>
+    </div>
     <div style="flex:1"></div>
     <div class="ctrl-group">
       <div class="ctrl-label">▸ ROUND</div>
@@ -1461,6 +1469,48 @@ function checkRoast(data) {
     toast.classList.remove('show');
     setTimeout(() => { toast.style.display = 'none'; }, 300);
   }, 7000);
+}
+
+// ── Manual player-data refresh ────────────────────────────────────────────
+async function refreshBoardData() {
+  const btn = document.getElementById('refreshBtn');
+  if (btn.disabled) return;
+  setRefreshBtn(true);
+  try {
+    const res = await fetch('/api/board/refresh', {method: 'POST'});
+    const data = await res.json();
+    if (!data.ok) {
+      document.getElementById('dataAge').textContent = (data.error || 'FAILED').toUpperCase();
+      setRefreshBtn(false);
+      return;
+    }
+    poll();   // pick up board_refreshing immediately
+  } catch (e) {
+    document.getElementById('dataAge').textContent = 'REFRESH FAILED';
+    setRefreshBtn(false);
+  }
+}
+
+function setRefreshBtn(busy) {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = busy;
+  btn.style.opacity = busy ? '0.5' : '1';
+  btn.style.cursor = busy ? 'default' : 'pointer';
+  btn.innerHTML = busy ? '&#8635; REFRESHING' : '&#8635; REFRESH';
+}
+
+function renderDataAge(data) {
+  const el = document.getElementById('dataAge');
+  if (!el) return;
+  if (data.board_refreshing) { setRefreshBtn(true); el.textContent = 'PULLING FROM ESPN...'; return; }
+  setRefreshBtn(false);
+  if (!data.last_board_refresh) { el.textContent = '\u2014'; return; }
+  const secs = Math.max(0, Math.round(Date.now() / 1000 - data.last_board_refresh));
+  const label = secs < 60 ? `${secs}S AGO`
+              : secs < 3600 ? `${Math.floor(secs / 60)}M AGO`
+              : `${Math.floor(secs / 3600)}H AGO`;
+  el.textContent = `UPDATED ${label}`;
+  el.style.color = secs > 1800 ? 'var(--amber)' : 'var(--green-dim)';
 }
 
 // ── Target queue ──────────────────────────────────────────────────────────
@@ -2062,6 +2112,7 @@ async function poll() {
     renderRecs(data.recommendations, data.current_round, data.next_pick_is_mine);
     renderRoster(data.my_roster);
     checkClockAlert(data);
+    renderDataAge(data);
     checkRoast(data);
     renderPosRun(data);
     renderLog(data.draft_log, data.total_picks);
