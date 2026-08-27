@@ -811,7 +811,11 @@
   .wk-pname { flex:1; color: var(--green); }
   .wk-pts { color: var(--green-dim); font-size:10px; }
   .wk-empty { color: var(--red); }
-  .wk-bye-list { margin-top:6px; font-size:10px; color: var(--amber); letter-spacing:1px; }
+  .wk-waiver { margin-top:8px; border-top:1px dashed var(--green-dark); padding-top:6px; }
+  .wk-waiver-hd { font-size:10px; color:#00ffcc; letter-spacing:2px; margin-bottom:3px; }
+  .wk-waiver-row { display:flex; gap:8px; padding:1px 0; font-size:10px; }
+  .wk-waiver-name { flex:1; color:#00ffcc; }
+  .wk-waiver-meta { color: var(--green-dim); font-size:9px; white-space:nowrap; }  .wk-bye-list { margin-top:6px; font-size:10px; color: var(--amber); letter-spacing:1px; }
 
 
   /* ── BOARD TABLE ── */
@@ -1599,12 +1603,26 @@ function renderWeekDetail() {
 
   const byeLine = w.on_bye.length
     ? `<div class="wk-bye-list">ON BYE: ${w.on_bye.map(p => `${p.name} (${p.position})`).join(' \u00b7 ')}</div>` : '';
+  // Waiver suggestions for any slot this week cannot fill
+  const wv = (seasonPlan.waivers || {})[w.week];
+  let waiverHtml = '';
+  if (wv) {
+    waiverHtml = Object.entries(wv).map(([pos, list]) => `
+      <div class="wk-waiver">
+        <div class="wk-waiver-hd">\u25b8 WAIVER TARGETS FOR ${pos} \u2014 AVAILABLE AND NOT ON BYE W${w.week}</div>
+        ${list.map(c => `<div class="wk-waiver-row">
+            <span class="wk-waiver-name">${c.name}</span>
+            <span class="wk-waiver-meta">${c.proTeam} \u00b7 ${c.proj_avg}/wk \u00b7 ${c.percent_owned}% own \u00b7 bye W${c.bye}</span>
+          </div>`).join('')}
+      </div>`).join('');
+  }
+
 
   el.innerHTML = `<div class="wk-detail">
     <div style="color:var(--green); letter-spacing:2px; margin-bottom:6px">
       \u25b8 WEEK ${w.week}${w.is_playoff ? ' \u2014 PLAYOFFS' : ''} \u2014 PROJECTED ${w.projected} PTS
     </div>
-    ${rows}${gapRows}${byeLine}
+    ${rows}${gapRows}${byeLine}${waiverHtml}
   </div>`;
 }
 

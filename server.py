@@ -1025,6 +1025,63 @@ def season_plan(roster):
     }
 
 
+def waiver_suggestions(plan, roster, limit=3):
+    """
+    Suggest available free agents to cover gap weeks.
+
+    A pickup only helps if the player is NOT also on bye that week, so
+    candidates are filtered per-week by their own bye. Returns
+    {week: {position: [candidates]}}.
+    """
+    rostered = {p['name'] for p in roster}
+
+    needed = set()
+    for w in plan['weeks']:
+        for g in w['gaps']:
+            if g == 'FLEX':
+                needed.update(FLEX_ELIGIBLE)
+            else:
+                needed.add(g)
+    if not needed:
+        return {}
+
+    league = connect()
+    pool = defaultdict(list)
+    for pos in needed:
+        try:
+            for p in league.free_agents(size=40, position=pos):
+                if p.name in rostered:
+                    continue
+                pool[pos].append({
+                    'name': p.name,
+                    'position': p.position,
+                    'proTeam': p.proTeam,
+                    'proj_avg': round(getattr(p, 'projected_avg_points', 0) or 0, 2),
+                    'percent_owned': round(getattr(p, 'percent_owned', 0) or 0, 1),
+                    'bye': BYE_WEEKS.get(p.proTeam),
+                })
+        except Exception:
+            continue
+    for lst in pool.values():
+        lst.sort(key=lambda x: -x['proj_avg'])
+
+    out = {}
+    for w in plan['weeks']:
+        if not w['gaps']:
+            continue
+        per_pos = {}
+        for gap in set(w['gaps']):
+            positions = FLEX_ELIGIBLE if gap == 'FLEX' else {gap}
+            cands = [c for pos in positions for c in pool.get(pos, [])
+                     if c['bye'] != w['week']]          # must actually play that week
+            cands.sort(key=lambda x: -x['proj_avg'])
+            if cands:
+                per_pos[gap] = cands[:limit]
+        if per_pos:
+            out[w['week']] = per_pos
+    return out
+
+
 def poll_draft():
     with state_lock:
         state['status'] = 'LOADING PLAYER BOARD...'
@@ -1427,6 +1484,10 @@ def get_season_plan():
     if not roster:
         return JSONResponse({'ok': False, 'error': 'Roster is empty — has the draft happened?'}, status_code=404)
     plan = season_plan(roster)
+    try:
+        plan['waivers'] = waiver_suggestions(plan, roster)
+    except Exception:
+        plan['waivers'] = {}
     plan['ok'] = True
     plan['roster'] = sorted(roster, key=lambda p: -p['proj_avg'])
     return JSONResponse(plan)

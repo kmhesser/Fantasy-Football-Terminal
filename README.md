@@ -149,6 +149,11 @@ Click any week to see the optimal lineup for it, who's on bye, and which slots
 can't be filled. Playoff weeks are marked. Use it in the first week of the season
 to find your problem weeks early, while the waiver wire is still deep.
 
+For any week with an unfillable slot, the planner also lists **waiver targets** —
+the best available free agents at that position who are *not* themselves on bye
+that week, with projected points and ownership so you can judge how urgently you
+need to claim them.
+
 ---
 
 ## Strategies
