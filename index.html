@@ -775,6 +775,45 @@
     50%      { opacity: 0.4; }
   }
 
+  /* ── SEASON PLANNER ── */
+  .planner-panel { grid-column: 1 / -1; }
+  .planner-wrap { overflow-x: auto; padding: 8px; }
+  .planner-grid { display: flex; gap: 6px; min-width: 900px; }
+  .wk-card {
+    flex: 1; min-width: 78px;
+    border: 1px solid var(--green-dark);
+    background: rgba(0,25,6,0.5);
+    padding: 6px 5px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+  .wk-card:hover { border-color: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+  .wk-card.sel   { border-color: var(--green); background: rgba(0,255,65,0.10); }
+  .wk-card.ok       { border-left: 3px solid var(--green); }
+  .wk-card.caution  { border-left: 3px solid var(--green-dim); }
+  .wk-card.warning  { border-left: 3px solid var(--amber); }
+  .wk-card.critical { border-left: 3px solid var(--red); box-shadow: inset 0 0 12px rgba(255,60,60,0.15); }
+  .wk-card.playoff  { background: rgba(0,40,12,0.7); }
+  .wk-num  { font-family:'VT323',monospace; font-size:17px; color: var(--green); letter-spacing:1px; line-height:1; }
+  .wk-proj { color: var(--green-dim); margin-top:3px; }
+  .wk-flag { margin-top:3px; letter-spacing:1px; }
+  .wk-flag.critical { color: var(--red); }
+  .wk-flag.warning  { color: var(--amber); }
+  .wk-flag.caution  { color: var(--green-dim); }
+  .wk-flag.ok       { color: var(--green-dim); opacity:0.5; }
+  .wk-po { font-size:8px; color: var(--amber); letter-spacing:1px; }
+
+  .wk-detail { border-top: 1px solid var(--green-dark); padding: 8px 10px; font-family:'Share Tech Mono',monospace; font-size:11px; }
+  .wk-detail-row { display:flex; gap:8px; padding:2px 0; }
+  .wk-slot { width:46px; color: var(--green-dim); font-size:10px; }
+  .wk-pname { flex:1; color: var(--green); }
+  .wk-pts { color: var(--green-dim); font-size:10px; }
+  .wk-empty { color: var(--red); }
+  .wk-bye-list { margin-top:6px; font-size:10px; color: var(--amber); letter-spacing:1px; }
+
+
   /* ── BOARD TABLE ── */
   .board-panel { grid-column: 1 / -1; }
 
@@ -1234,6 +1273,22 @@
       </div>
     </div>
 
+    <!-- SEASON LINEUP PLANNER -->
+    <div class="panel planner-panel">
+      <div class="panel-header">
+        &#9656; SEASON PLANNER
+        <span style="display:flex; align-items:center; gap:8px">
+          <span class="badge" id="plannerSummary">NOT LOADED</span>
+          <button class="gb-collapse-btn" onclick="loadSeasonPlan()" title="Load / reload from ESPN">&#8635;</button>
+          <button class="gb-collapse-btn" id="plannerCollapseBtn" onclick="togglePanel('plannerWrap','plannerCollapseBtn','plCollapsed')">[&minus;]</button>
+        </span>
+      </div>
+      <div id="plannerWrap" class="collapse-target">
+        <div class="planner-wrap" id="plannerGrid"><div class="no-picks" style="padding:14px">&#9656; CLICK &#8635; TO BUILD YOUR WEEK-BY-WEEK OUTLOOK</div></div>
+        <div id="wkDetail"></div>
+      </div>
+    </div>
+
     <!-- FULL BOARD -->
     <div class="panel board-panel">
       <div class="panel-header">
@@ -1469,6 +1524,88 @@ function checkRoast(data) {
     toast.classList.remove('show');
     setTimeout(() => { toast.style.display = 'none'; }, 300);
   }, 7000);
+}
+
+// ── Season lineup planner ─────────────────────────────────────────────────
+let seasonPlan = null;
+let selectedWeek = null;
+
+async function loadSeasonPlan() {
+  const grid = document.getElementById('plannerGrid');
+  const sum  = document.getElementById('plannerSummary');
+  sum.textContent = 'LOADING...';
+  grid.innerHTML = '<div class="no-picks" style="padding:14px">\u25b8 PULLING ROSTER FROM ESPN...</div>';
+  try {
+    const d = await fetch('/api/season-plan').then(r => r.json());
+    if (!d.ok) {
+      sum.textContent = 'ERROR';
+      grid.innerHTML = `<div class="no-picks" style="padding:14px; color:var(--red)">\u25b8 ${(d.error || 'FAILED').toUpperCase()}</div>`;
+      return;
+    }
+    seasonPlan = d;
+    renderSeasonPlan();
+  } catch (e) {
+    sum.textContent = 'ERROR';
+    grid.innerHTML = '<div class="no-picks" style="padding:14px; color:var(--red)">\u25b8 COULD NOT REACH SERVER</div>';
+  }
+}
+
+function renderSeasonPlan() {
+  if (!seasonPlan) return;
+  const grid = document.getElementById('plannerGrid');
+  const probs = seasonPlan.problem_weeks || [];
+  document.getElementById('plannerSummary').textContent =
+    probs.length ? `${probs.length} PROBLEM WEEK${probs.length > 1 ? 'S' : ''}: ${probs.join(', ')}` : 'ALL WEEKS OK';
+
+  grid.innerHTML = '<div class="planner-grid">' + seasonPlan.weeks.map(w => {
+    const flag = w.gaps.length ? `\u2716 NO ${[...new Set(w.gaps)].join('/')}`
+               : w.on_bye.length ? `${w.on_bye.length} BYE`
+               : 'FULL';
+    return `<div class="wk-card ${w.severity} ${w.is_playoff ? 'playoff' : ''} ${selectedWeek === w.week ? 'sel' : ''}"
+                 onclick="selectWeek(${w.week})">
+      <div class="wk-num">W${w.week}</div>
+      ${w.is_playoff ? '<div class="wk-po">PLAYOFF</div>' : ''}
+      <div class="wk-proj">${w.projected} pts</div>
+      <div class="wk-flag ${w.severity}">${flag}</div>
+    </div>`;
+  }).join('') + '</div>';
+
+  if (selectedWeek == null) {
+    selectedWeek = probs.length ? probs[0] : 1;
+  }
+  renderWeekDetail();
+}
+
+function selectWeek(wk) { selectedWeek = wk; renderSeasonPlan(); }
+
+function renderWeekDetail() {
+  const el = document.getElementById('wkDetail');
+  if (!seasonPlan || selectedWeek == null) { el.innerHTML = ''; return; }
+  const w = seasonPlan.weeks.find(x => x.week === selectedWeek);
+  if (!w) { el.innerHTML = ''; return; }
+
+  const order = ['QB','RB','WR','TE','FLEX','K'];
+  const rows = [...w.lineup].sort((a,b) => order.indexOf(a.slot) - order.indexOf(b.slot))
+    .map(p => `<div class="wk-detail-row">
+        <span class="wk-slot">${p.slot}</span>
+        <span class="wk-pname">${p.name}${p.injured ? ` <span style="color:var(--amber)">\u26a0${p.injuryStatus || 'INJ'}</span>` : ''}</span>
+        <span class="wk-pts">${p.proj_avg}/wk</span>
+      </div>`).join('');
+
+  const gapRows = w.gaps.map(g => `<div class="wk-detail-row">
+      <span class="wk-slot">${g}</span>
+      <span class="wk-pname wk-empty">\u2716 NO ELIGIBLE PLAYER \u2014 stream from waivers</span>
+    </div>`).join('');
+
+  const byeLine = w.on_bye.length
+    ? `<div class="wk-bye-list">ON BYE: ${w.on_bye.map(p => `${p.name} (${p.position})`).join(' \u00b7 ')}</div>` : '';
+
+  el.innerHTML = `<div class="wk-detail">
+    <div style="color:var(--green); letter-spacing:2px; margin-bottom:6px">
+      \u25b8 WEEK ${w.week}${w.is_playoff ? ' \u2014 PLAYOFFS' : ''} \u2014 PROJECTED ${w.projected} PTS
+    </div>
+    ${rows}${gapRows}${byeLine}
+  </div>`;
 }
 
 // ── Manual player-data refresh ────────────────────────────────────────────

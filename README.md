@@ -41,6 +41,9 @@ It boots like the machine it pretends to be:
 - **Target list** — star players to watch; they get marked SNIPED when taken
 - **Demo mode** — simulate a full draft against opponents that draft by value over
   replacement, to rehearse before the real thing
+- **Season planner** — after the draft, a week-by-week outlook built from your live
+  ESPN roster: the optimal lineup for every week, bye-week clusters, and weeks
+  where you cannot field a legal starter at some position
 
 ---
 
@@ -126,6 +129,25 @@ minutes (tune `BOARD_REFRESH_SECONDS` in `server.py`).
 
 This tool is **read-only**. It never submits a pick. Whoever runs your draft still
 enters every selection — call out your pick, then let the terminal catch up.
+
+---
+
+## After the draft
+
+The **SEASON PLANNER** panel builds a week-by-week outlook from your live ESPN
+roster. Click the &#8635; button in its header to load it.
+
+Each week gets a card showing the projected total and its status:
+
+| Status | Meaning |
+|--------|---------|
+| **FULL** | Everyone available, no byes |
+| **n BYE** | Some players out, lineup still legal |
+| **✖ NO \<POS\>** | You cannot field a legal starter at that position — stream from waivers |
+
+Click any week to see the optimal lineup for it, who's on bye, and which slots
+can't be filled. Playoff weeks are marked. Use it in the first week of the season
+to find your problem weeks early, while the waiver wire is still deep.
 
 ---
 

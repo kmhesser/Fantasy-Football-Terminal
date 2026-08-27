@@ -929,6 +929,102 @@ def do_board_refresh():
             state['board_refreshing'] = False
 
 
+# ── Season Lineup Planner ──────────────────────────────────────────────────
+SEASON_LAST_WEEK = 17          # fantasy playoffs end week 17
+
+
+def load_espn_roster():
+    """Pull the live roster from ESPN (post-draft truth, includes waiver moves)."""
+    league = connect()
+    team = next((t for t in league.teams if t.team_id == MY_TEAM_ID), None)
+    if not team:
+        return []
+    out = []
+    for p in team.roster:
+        out.append({
+            'name': p.name,
+            'position': p.position,
+            'proTeam': p.proTeam,
+            'proj_season': round(getattr(p, 'projected_total_points', 0) or 0, 1),
+            'proj_avg': round(getattr(p, 'projected_avg_points', 0) or 0, 2),
+            'injured': bool(getattr(p, 'injured', False)),
+            'injuryStatus': getattr(p, 'injuryStatus', '') or '',
+            'bye': BYE_WEEKS.get(p.proTeam),
+        })
+    return out
+
+
+def plan_week(roster, week):
+    """
+    Build the best legal lineup for one week.
+
+    Dedicated slots take the highest projected player at each position, then
+    FLEX takes the best remaining flex-eligible players. That ordering is
+    optimal here because dedicated slots cannot be filled by other positions.
+    """
+    available = [p for p in roster if p.get('bye') != week]
+    on_bye    = [p for p in roster if p.get('bye') == week]
+
+    pool = defaultdict(list)
+    for p in available:
+        pool[p['position']].append(p)
+    for lst in pool.values():
+        lst.sort(key=lambda x: -x['proj_avg'])
+
+    lineup, gaps, used = [], [], set()
+    for pos in ('QB', 'RB', 'WR', 'TE', 'K'):
+        need = STARTER_NEEDS.get(pos, 0)
+        picks = pool[pos][:need]
+        for p in picks:
+            lineup.append({'slot': pos, **p}); used.add(p['name'])
+        for _ in range(need - len(picks)):
+            gaps.append(pos)
+
+    flex_pool = sorted(
+        [p for p in available if p['position'] in FLEX_ELIGIBLE and p['name'] not in used],
+        key=lambda x: -x['proj_avg'])
+    for p in flex_pool[:STARTER_NEEDS.get('FLEX', 0)]:
+        lineup.append({'slot': 'FLEX', **p}); used.add(p['name'])
+    for _ in range(STARTER_NEEDS.get('FLEX', 0) - len(flex_pool[:STARTER_NEEDS.get('FLEX', 0)])):
+        gaps.append('FLEX')
+
+    bench = [p for p in available if p['name'] not in used]
+    projected = round(sum(p['proj_avg'] for p in lineup), 1)
+
+    if gaps:
+        severity = 'critical'
+    elif len(on_bye) >= 4:
+        severity = 'warning'
+    elif len(on_bye) >= 2:
+        severity = 'caution'
+    else:
+        severity = 'ok'
+
+    return {
+        'week': week,
+        'is_playoff': week in FANTASY_PLAYOFF_WEEKS,
+        'lineup': lineup,
+        'gaps': gaps,
+        'on_bye': [{'name': p['name'], 'position': p['position'], 'proTeam': p['proTeam']} for p in on_bye],
+        'bench_count': len(bench),
+        'projected': projected,
+        'severity': severity,
+    }
+
+
+def season_plan(roster):
+    """Week-by-week outlook for the whole fantasy season."""
+    weeks = [plan_week(roster, w) for w in range(1, SEASON_LAST_WEEK + 1)]
+    worst = [w for w in weeks if w['severity'] in ('critical', 'warning')]
+    return {
+        'weeks': weeks,
+        'roster_size': len(roster),
+        'problem_weeks': [w['week'] for w in worst],
+        'best_week': max(weeks, key=lambda w: w['projected'])['week'] if weeks else None,
+        'worst_week': min(weeks, key=lambda w: w['projected'])['week'] if weeks else None,
+    }
+
+
 def poll_draft():
     with state_lock:
         state['status'] = 'LOADING PLAYER BOARD...'
@@ -1319,6 +1415,21 @@ async def set_config(data: dict):
         if 'demo_chaos' in data:
             state['demo_chaos'] = max(0.0, min(1.0, float(data['demo_chaos'])))
     return {'ok': True}
+
+
+@app.get('/api/season-plan')
+def get_season_plan():
+    """Week-by-week lineup outlook built from the live ESPN roster."""
+    try:
+        roster = load_espn_roster()
+    except Exception as e:
+        return JSONResponse({'ok': False, 'error': f'Could not load roster: {e}'}, status_code=502)
+    if not roster:
+        return JSONResponse({'ok': False, 'error': 'Roster is empty — has the draft happened?'}, status_code=404)
+    plan = season_plan(roster)
+    plan['ok'] = True
+    plan['roster'] = sorted(roster, key=lambda p: -p['proj_avg'])
+    return JSONResponse(plan)
 
 
 @app.post('/api/board/refresh')
