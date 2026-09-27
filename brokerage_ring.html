@@ -18,9 +18,10 @@
     --accent: #2743c4;
     --up: #0f8a5f;
     --down: #c8413b;
-    /* shade ramps for the size of a move: small -> medium (= --up/--down) -> big */
-    --up-lo: #b9e4cf; --up-hi: #06402a;
-    --down-lo: #f2c4c0; --down-hi: #6e1814;
+    /* five shades per direction, smallest move first: gains go yellow-green -> deep teal,
+       losses salmon -> maroon, so they change hue as well as depth */
+    --up-1: #dcf2b8; --up-2: #9ed98a; --up-3: #3fae6a; --up-4: #11785a; --up-5: #053d33;
+    --down-1: #fde0c9; --down-2: #f7a584; --down-3: #e25a45; --down-4: #aa2530; --down-5: #560d1c;
     --flat: #8a6d1f;
     --display: 'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif;
     --sans: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
@@ -31,14 +32,18 @@
       color-scheme: dark;
       --bg: #0f141a; --surface: #161d26; --ink: #e6ebf0; --muted: #8a98a8; --faint: #5a6878;
       --rule: #263140; --slice: #1e2733; --accent: #8098ff; --up: #3ccb8f; --down: #ff6b61; --flat: #d9b44a;
-      --up-lo: #1f4a38; --up-hi: #b4f5d6; --down-lo: #5a2522; --down-hi: #ffc4bd;
+      /* dark mode: small moves dim, big moves bright (deep shades would vanish into the background) */
+      --up-1: #1d3a2a; --up-2: #22613f; --up-3: #2f9a5e; --up-4: #52d18c; --up-5: #b9f7cf;
+      --down-1: #3f1f1b; --down-2: #742b24; --down-3: #b8433a; --down-4: #ff6b5c; --down-5: #ffc3b7;
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
     --bg: #0f141a; --surface: #161d26; --ink: #e6ebf0; --muted: #8a98a8; --faint: #5a6878;
     --rule: #263140; --slice: #1e2733; --accent: #8098ff; --up: #3ccb8f; --down: #ff6b61; --flat: #d9b44a;
-      --up-lo: #1f4a38; --up-hi: #b4f5d6; --down-lo: #5a2522; --down-hi: #ffc4bd;
+      /* dark mode: small moves dim, big moves bright (deep shades would vanish into the background) */
+      --up-1: #1d3a2a; --up-2: #22613f; --up-3: #2f9a5e; --up-4: #52d18c; --up-5: #b9f7cf;
+      --down-1: #3f1f1b; --down-2: #742b24; --down-3: #b8433a; --down-4: #ff6b5c; --down-5: #ffc3b7;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   [hidden] { display: none !important; }
@@ -128,8 +133,10 @@
               clip-path: polygon(0 60%, 45% 60%, 45% 0, 100% 0, 100% 100%, 0 100%); border-bottom: 1px dashed var(--faint); }
   .sw-bar { width: 12px; height: 10px; background: linear-gradient(to right, var(--up) 0 45%, transparent 45% 55%, var(--down) 55%); }
   .sw-gap { width: 18px; height: 10px; background: linear-gradient(to right, var(--down) 0 30%, transparent 30% 70%, var(--up) 70%); border-top: 2px solid var(--up); }
-  .sw-shade { width: 28px; height: 10px; border-radius: 2px;
-              background: linear-gradient(to right, var(--down-hi), var(--down), var(--down-lo) 45%, var(--up-lo) 55%, var(--up), var(--up-hi)); }
+  .sw-shade { width: 50px; height: 10px; border-radius: 2px;
+              background: linear-gradient(to right, var(--down-5) 0 10%, var(--down-4) 10% 20%, var(--down-3) 20% 30%,
+                var(--down-2) 30% 40%, var(--down-1) 40% 50%, var(--up-1) 50% 60%, var(--up-2) 60% 70%,
+                var(--up-3) 70% 80%, var(--up-4) 80% 90%, var(--up-5) 90%); }
   .sw-ext { width: 18px; height: 10px; border: 1px dashed var(--ink); border-radius: 999px; opacity: .75; }
   .other-note { padding: 8px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); }
   .other-note button, #backLive { font-size: 12px; padding: 2px 8px; margin-left: 4px; }
@@ -162,7 +169,7 @@
         <span><i class="sw sw-slice"></i>Slice: share of the account</span>
         <span id="lgThick"><i class="sw sw-thick"></i>Thickness: volume vs. normal (dashed circle = 1×)</span>
         <span><i class="sw sw-bar"></i><span id="lgBar">Bar: % move today, out when up, in when down</span></span>
-        <span><i class="sw sw-shade"></i>Shade: deeper = bigger move</span>
+        <span><i class="sw sw-shade"></i><span id="lgShade">Shade steps at 0.25, 0.5, 1 and 2%</span></span>
         <span id="lgGap"><i class="sw sw-gap"></i>Gap: splits gainers (green arc) from losers</span>
         <span id="lgExt" hidden><i class="sw sw-ext"></i>Dashed pill: pre/after-hours price</span>
       </div>
@@ -231,20 +238,18 @@
     const v = k => cs.getPropertyValue('--' + k).trim();
     C = { ink: v('ink'), muted: v('muted'), faint: v('faint'), rule: v('rule'), slice: v('slice'),
           surface: v('surface'), bgc: v('bg'), accent: v('accent'), up: v('up'), down: v('down'), flat: v('flat'),
-          upLo: v('up-lo'), upHi: v('up-hi'), downLo: v('down-lo'), downHi: v('down-hi') };
+          upSteps: [1, 2, 3, 4, 5].map(k => v('up-' + k)), downSteps: [1, 2, 3, 4, 5].map(k => v('down-' + k)) };
   }
-  // Shade for a move: a pale tint for small moves through the base green/red to a deep shade
-  // (vivid in dark mode) for big ones. t is the move as a share of a full bar (0..1).
-  const rgb = hex => { const n = parseInt(hex.replace('#', ''), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
-  const mixHex = (a, b, t) => { const A = rgb(a), B = rgb(b); return `rgb(${A.map((x, i) => Math.round(x + (B[i] - x) * t)).join(',')})`; };
-  function shade(up, t) {
-    t = Math.sqrt(Math.max(0, Math.min(1, t))); // small moves still get a visible tint
-    const [lo, mid, hi] = up ? [C.upLo, C.up, C.upHi] : [C.downLo, C.down, C.downHi];
-    return t < .5 ? mixHex(lo, mid, t / .5) : mixHex(mid, hi, (t - .5) / .5);
+  // Shade for a move, in five fixed steps like a stock heatmap: the same shade always means the
+  // same size of move. Step limits come from the measure (see MEASURES.steps).
+  function shade(up, absMove, steps) {
+    const level = steps.filter(lim => absMove >= lim).length; // 0..4
+    return (up ? C.upSteps : C.downSteps)[level];
   }
   // readable text on a shaded fill: dark on light fills, white on dark ones
   function textOn(fill) {
-    const [r, g, b] = fill.match(/\d+/g).map(Number).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); });
+    const n = parseInt(fill.replace('#', ''), 16);
+    const [r, g, b] = [n >> 16 & 255, n >> 8 & 255, n & 255].map(v => { v /= 255; return v <= .04045 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); });
     return .2126 * r + .7152 * g + .0722 * b > .3 ? '#10161d' : '#ffffff';
   }
   const MONO = "'IBM Plex Mono', ui-monospace, Menlo, monospace";
@@ -254,8 +259,11 @@
   // How each measure is drawn: `scale` fills a full bar, `hyst` is how far one holding must lead
   // another before they swap places on the ring (so near-ties don't flicker).
   //   pct: the holding's own % move.  usd: its dollar gain/loss as points of the whole account.
-  const MEASURES = { pct: { scale: 5, hyst: 0.1, guides: '±2.5% and ±5%' },
-                     usd: { scale: 0.5, hyst: 0.01, guides: '±0.25% and ±0.5% of the account' } };
+  // `steps` are where each shade begins.
+  const MEASURES = { pct: { scale: 5, hyst: 0.1, steps: [.25, .5, 1, 2], guides: '±2.5% and ±5%',
+                            shadeNote: 'Shade steps at 0.25, 0.5, 1 and 2%' },
+                     usd: { scale: 0.5, hyst: 0.01, steps: [.025, .05, .1, .2], guides: '±0.25% and ±0.5% of the account',
+                            shadeNote: 'Shade steps at 0.025, 0.05, 0.1 and 0.2% of the account' } };
   const OTHER_MAX_W = 0.01;  // positions under 1% of the account are grouped into "Other"
   const PULSE_MS = 1800;
   const VOL_LOOKBACK = 20;   // days in the "normal volume" average
@@ -471,7 +479,7 @@
     ring = ring.slice().sort((a, b) => pos.get(a.key) - pos.get(b.key));
     const col = k => ring.map(x => x[k]);
     return {
-      ...ctx, items, measure: S.measure, scale: M_.scale, hyst: M_.hyst,
+      ...ctx, items, measure: S.measure, scale: M_.scale, hyst: M_.hyst, steps: M_.steps,
       keys: col('key'), labels: ring.map(x => x.label || x.key), members: ring.map(x => x.members || null),
       cash: col('cash'), ext: col('ext'), val: col('val'), w: col('w'), pct: col('pct'), d: col('d'), m: col('m'),
       rvol: col('rvol'), total, prevTotal, chg: total - prevTotal, chgP: prevTotal ? (total / prevTotal - 1) * 100 : 0
@@ -694,23 +702,18 @@
       const hot = hotI === i, top = st.top === i;
       const s0 = a0 + gap / 2, s1 = Math.max(s0, a1 - gap / 2);
       const dir = fr.cash[i] ? C.faint : p > .005 ? C.up : p < -.005 ? C.down : C.flat;
-      const barC = Math.abs(p) > .005 ? shade(p > 0, mag) : dir;
+      const fillC = Math.abs(p) > .005 && !fr.cash[i] ? shade(p > 0, Math.abs(st.m[i]), fr.steps) : null;
       rctx.save();
       if (fr.ext[i]) rctx.globalAlpha = .6; // extended-hours prices: dimmed
       band(inner[i], rOut, s0, s1);
       rctx.fillStyle = C.slice; rctx.fill();
-      if (!fr.cash[i]) {
-        rctx.save();
-        rctx.globalAlpha *= hot ? .55 : .12 + mag * .38;
-        rctx.fillStyle = dir; rctx.fill();
-        rctx.restore();
-      }
+      if (fillC) { rctx.fillStyle = fillC; rctx.fill(); } // the whole slice takes its step's shade
       if (hot || top) { rctx.lineWidth = 2; rctx.strokeStyle = C.accent; rctx.stroke(); }
       // move bar
       if (!fr.cash[i] && Math.abs(p) > .005) {
         const Lb = Math.max(1.5, mag * bar), up = p > 0;
         band(up ? rOut + 3 : inner[i] - 3 - Lb, up ? rOut + 3 + Lb : inner[i] - 3, s0, s1);
-        rctx.fillStyle = barC; rctx.fill();
+        rctx.fillStyle = fillC; rctx.fill();
       }
       rctx.restore();
     }
@@ -769,8 +772,8 @@
       const pw = cash ? 0 : Math.max(rctx.measureText(ps).width, rctx.measureText(usd ? '+$0.0k' : '+0.00%').width);
       const pillX = left ? -(pw + (cash ? 0 : gapX) + pillW) : pw + (cash ? 0 : gapX);
       // pill: green when up on the day, red when down, neutral when flat or cash
-      // pill: shaded green when up, red when down (paler = smaller move), neutral when flat or cash
-      const dirC = cash || Math.abs(p) <= .005 ? null : shade(p > 0, Math.abs(st.m[i]) / fr.scale);
+      // pill: stepped green when up, red when down (paler = smaller move), neutral when flat or cash
+      const dirC = cash || Math.abs(p) <= .005 ? null : shade(p > 0, Math.abs(st.m[i]), fr.steps);
       const pulse = pulseFor(fr, i);
       if (pulse) { // expanding ring that fades out
         const k = (now - pulse.t) / PULSE_MS, o = 2 + k * font * 1.4;
@@ -895,7 +898,7 @@
   // ---------- movers table ----------
   function pillStyle(x, scale) {
     if (x.cash || Math.abs(x.pct) <= .005) return '';
-    const f = shade(x.pct > 0, Math.abs(x.m) / scale);
+    const f = shade(x.pct > 0, Math.abs(x.m), S.frame.steps);
     return ` style="background:${f};border-color:${f};color:${textOn(f)}"`;
   }
   const rows = $('rows');
@@ -941,6 +944,7 @@
     $('lgGap').hidden = $('layout').value !== 'magnet';
     $('lgExt').hidden = !fr.ext.some(Boolean);
     $('guides').textContent = MEASURES[fr.measure].guides;
+    $('lgShade').textContent = MEASURES[fr.measure].shadeNote;
   }
 
   // ---------- value line: intraday in live, day-by-day in replay ----------
