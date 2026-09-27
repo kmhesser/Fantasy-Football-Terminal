@@ -213,6 +213,9 @@ under the ring explains each mark.
   pull together around 12 o'clock like magnets; losers are pushed away, leaving a
   gap on each side of the green block. Two tickers only trade places once one
   clearly leads, so near-ties don't flicker.
+- **Sizing:** slices are each holding's true share of the account, or switch to
+  square-root sizing so one big position doesn't crowd out the rest (the table
+  and readouts still show true weights).
 - **% change or $ impact:** bars and order follow either each holding's own %
   move or what it did to your account in dollars.
 - **Thickness** is trading volume: shares traded today against a normal day at

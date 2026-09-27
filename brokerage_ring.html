@@ -174,7 +174,7 @@
     <section class="stage">
       <div class="ring-box"><canvas id="ring" aria-label="Portfolio ring: each holding is a slice sized by its weight, with its ticker around the edge and a bar showing its daily move"></canvas></div>
       <div class="legend" id="legend">
-        <span><i class="sw sw-slice"></i>Slice: share of the account</span>
+        <span><i class="sw sw-slice"></i><span id="lgSlice">Slice: share of the account</span></span>
         <span id="lgThick"><i class="sw sw-thick"></i>Thickness: volume vs. normal (dashed circle = 1×)</span>
         <span><i class="sw sw-bar"></i><span id="lgBar">Bar: % move today, out when up, in when down</span></span>
         <span><i class="sw sw-shade"></i><span id="lgShade">Shade steps at 0.25, 0.5, 1 and 2%</span></span>
@@ -223,6 +223,10 @@
           <option value="alerts">Alert shapes</option>
           <option value="breadth">Breadth dial</option>
           <option value="custom">Custom rule…</option>
+        </select>
+        <select id="sizing" aria-label="Slice sizing">
+          <option value="true" selected>True weight</option>
+          <option value="sqrt">Square-root sizing</option>
         </select>
         <select id="layout" aria-label="Ring layout">
           <option value="magnet" selected>Magnetize gainers</option>
@@ -533,14 +537,24 @@
       ...ctx, items, measure: S.measure, scale: M_.scale, hyst: M_.hyst, steps: M_.steps,
       level: col('level'), keys: col('key'), labels: ring.map(x => x.label || x.key), members: ring.map(x => x.members || null),
       cash: col('cash'), ext: col('ext'), val: col('val'), w: col('w'), pct: col('pct'), d: col('d'), m: col('m'),
+      dw: displayWeights(ring),
       rvol: col('rvol'), total, prevTotal, chg: total - prevTotal, chgP: prevTotal ? (total / prevTotal - 1) * 100 : 0
     };
+  }
+
+  // How much of the ring each slice gets. "True weight" is its share of the account; square-root
+  // sizing uses √value instead, so one big position can't crowd out the rest. Only the ring
+  // changes: the table, readouts and the Other grouping keep using true weights.
+  function displayWeights(ring) {
+    if ($('sizing').value !== 'sqrt') return ring.map(x => x.w);
+    const r = ring.map(x => Math.sqrt(Math.max(0, x.val))), t = r.reduce((a, b) => a + b, 0) || 1;
+    return r.map(v => v / t);
   }
 
   // ---------- layout: where each slice should sit ----------
   const isUp = (fr, i) => !fr.cash[i] && fr.pct[i] > .005;
   function layout(fr) {
-    const { m, w } = fr, n = w.length;
+    const { m } = fr, w = fr.dw, n = w.length; // w: ring share (true or square-root)
     const mode = $('layout').value;
     let top = 0;
     m.forEach((v, i) => { if (Math.abs(v) > Math.abs(m[top])) top = i; });
@@ -583,7 +597,7 @@
       let cum = rot;
       for (let i = 0; i < n; i++) { ang[i] = cum; cum += w[i] * TAU; }
     }
-    return { keys: fr.keys.join('|'), w: w.slice(), sw, near, pct: fr.pct.slice(), m: m.slice(), d: fr.d.slice(), val: fr.val.slice(),
+    return { keys: fr.keys.join('|'), w: fr.w.slice(), sw, near, pct: fr.pct.slice(), m: m.slice(), d: fr.d.slice(), val: fr.val.slice(),
              total: fr.total, chg: fr.chg, chgP: fr.chgP, rv: fr.rvol.map(v => v == null ? 1 : v),
              rot, ang, cl, mode, top: fr.moved && mode !== 'magnet' ? top : -1, best: fr.moved && m[top] !== 0 ? top : -1 };
   }
@@ -1177,6 +1191,8 @@
     $('lgExt').hidden = !fr.ext.some(Boolean);
     $('guides').textContent = MEASURES[fr.measure].guides;
     $('lgShade').textContent = MEASURES[fr.measure].shadeNote;
+    $('lgSlice').textContent = $('sizing').value === 'sqrt'
+      ? 'Slice: square-root of value (big holdings shrunk, small ones enlarged)' : 'Slice: share of the account';
     const live = S.mode === 'live';
     const notes = {
       momentum: `Tail: ${live ? '15-minute' : '5-day'} momentum, longer = faster`,
@@ -1316,6 +1332,8 @@
   $('indicator2').value = store.get('ring.indicator2') || 'none';
   $('indicator').addEventListener('change', () => { store.set('ring.indicator', $('indicator').value); reshow(); });
   $('indicator2').addEventListener('change', () => { store.set('ring.indicator2', $('indicator2').value); reshow(); });
+  $('sizing').value = store.get('ring.sizing') || 'true';
+  $('sizing').addEventListener('change', () => { store.set('ring.sizing', $('sizing').value); reshow(); });
   $('customRule').addEventListener('input', () => { store.set('ring.rule', $('customRule').value); compileRule(); reshow(); });
   $('measure').addEventListener('change', () => { S.measure = $('measure').value; S.rank = null; S.levels = new Map(); S.prevMarks = null; reshow(); });
   document.addEventListener('keydown', e => {
