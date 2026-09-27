@@ -226,7 +226,9 @@ under the ring explains each mark.
   pulses. A pill also pulses when volume passes 2x normal. A holding right on a
   step boundary keeps its shade until it's clearly past it, so it doesn't flicker.
 
-- **Indicator** menu (one at a time), worked out from today's minute-by-minute
+- **Indicator** menus: pick up to two at once (they use different parts of the
+  ring, so they layer: e.g. momentum tails + VWAP notches, or signal badges + a
+  custom rule side by side). Worked out from today's minute-by-minute
   prices in live mode and from daily closes in replay:
   - *Momentum tails:* a comet tail behind each pill, longer = faster move over the
     last 15 minutes (5 days in replay).

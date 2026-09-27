@@ -180,6 +180,7 @@
         <span><i class="sw sw-shade"></i><span id="lgShade">Shade steps at 0.25, 0.5, 1 and 2%</span></span>
         <span id="lgGap"><i class="sw sw-gap"></i>Gap: splits gainers (green arc) from losers</span>
         <span id="lgInd" hidden><i class="sw sw-ind"></i><span id="lgIndText"></span></span>
+        <span id="lgInd2" hidden><i class="sw sw-ind"></i><span id="lgIndText2"></span></span>
         <span id="lgExt" hidden><i class="sw sw-ext"></i>Dashed pill: pre/after-hours price</span>
       </div>
 
@@ -205,6 +206,16 @@
         </select>
         <select id="indicator" aria-label="Indicator">
           <option value="none" selected>No indicator</option>
+          <option value="momentum">Momentum tails</option>
+          <option value="range">Day range</option>
+          <option value="vwap">VWAP distance</option>
+          <option value="signals">Signal badges</option>
+          <option value="alerts">Alert shapes</option>
+          <option value="breadth">Breadth dial</option>
+          <option value="custom">Custom rule…</option>
+        </select>
+        <select id="indicator2" aria-label="Second indicator">
+          <option value="none" selected>+ No second indicator</option>
           <option value="momentum">Momentum tails</option>
           <option value="range">Day range</option>
           <option value="vwap">VWAP distance</option>
@@ -753,15 +764,18 @@
       $('ruleErr').hidden = true;
     } catch (e) { customFn = null; $('ruleErr').hidden = false; $('ruleErr').textContent = 'Rule not valid: ' + e.message; }
   }
+  // Up to two indicators at once, one from each menu. Most use different parts of the ring
+  // (tails, notches, badges, pill shape, the center dial), so they layer without clashing.
+  const activeInd = () => new Set([$('indicator').value, $('indicator2').value].filter(v => v !== 'none'));
   // per ring slot: the indicator values, or null for cash, Other and holdings without history
   function computeIndicators(fr) {
-    const kind = $('indicator').value;
-    if (kind === 'none') return null;
+    const IND = activeInd();
+    if (!IND.size) return null;
     return fr.keys.map((k, i) => {
       if (fr.cash[i] || fr.members[i]) return null;
       const sr = seriesOf(k), m = sr && measure(sr);
       if (!m) return null;
-      if (kind === 'custom' && customFn) {
+      if (IND.has('custom') && customFn) {
         try {
           m.rule = !!customFn(fr.pct[i], fr.d[i], fr.rvol[i] ?? 1, fr.w[i] * 100, m.mom, m.range * 100, m.vwap,
                               m.rsi ?? 50, m.streak, fr.bench ? fr.bench.pct : 0);
@@ -774,14 +788,17 @@
   function indNote(fr, i) {
     const m = S.ind && S.ind[i]; if (!m) return '';
     const sgn = v => (v >= 0 ? '+' : '') + v.toFixed(2);
-    switch ($('indicator').value) {
-      case 'momentum': return ` \u00b7 mom ${sgn(m.mom)}%`;
-      case 'range': return ` \u00b7 range ${Math.round(m.range * 100)}%`;
-      case 'vwap': case 'breadth': return ` \u00b7 vs VWAP ${sgn(m.vwap)}%`;
-      case 'signals': return m.rsi != null ? ` \u00b7 RSI ${Math.round(m.rsi)}` : '';
-      case 'custom': return ` \u00b7 rule ${m.rule ? 'yes' : 'no'}`;
-    }
-    return '';
+    const one = kind => {
+      switch (kind) {
+        case 'momentum': return ` \u00b7 mom ${sgn(m.mom)}%`;
+        case 'range': return ` \u00b7 range ${Math.round(m.range * 100)}%`;
+        case 'vwap': case 'breadth': return ` \u00b7 vs VWAP ${sgn(m.vwap)}%`;
+        case 'signals': return m.rsi != null ? ` \u00b7 RSI ${Math.round(m.rsi)}` : '';
+        case 'custom': return ` \u00b7 rule ${m.rule ? 'yes' : 'no'}`;
+      }
+      return '';
+    };
+    return [...new Set([...activeInd()].map(one))].join('');
   }
 
   // ---------- ring drawing ----------
@@ -841,7 +858,7 @@
       rctx.beginPath(); rctx.arc(cx, cy, rIn, 0, TAU); rctx.stroke(); rctx.restore();
     }
     const drawOrder = [...Array(n).keys()].sort((x, y) => st.m[x] - st.m[y]);
-    const now = performance.now();
+    const now = performance.now(), IND = activeInd();
     for (const i of drawOrder) {
       const [a0, a1] = mids[i];
       if (a1 - a0 < 1e-4) continue;
@@ -874,8 +891,9 @@
         band(up ? rOut + 3 : inner[i] - 3 - Lb, up ? rOut + 3 + Lb : inner[i] - 3, s0, s1);
         rctx.fillStyle = fillC; rctx.fill();
       }
-      const ind = S.ind && S.ind[i], kind = $('indicator').value;
-      if (ind && (kind === 'range' || kind === 'vwap')) {
+      const ind = S.ind && S.ind[i];
+      for (const kind of ['vwap', 'range']) {
+        if (!ind || !IND.has(kind)) continue;
         // notch across the slice: range = low at the inner edge, high at the outer edge;
         // vwap = VWAP in the middle (dashed), edges at ±1%
         const pos = kind === 'range' ? ind.range : .5 + Math.max(-1, Math.min(1, ind.vwap)) / 2;
@@ -928,8 +946,8 @@
         rctx.lineTo(cx + Math.cos(mid) * (rLab - 1), cy + Math.sin(mid) * (rLab - 1));
         rctx.stroke(); rctx.restore();
       }
-      const ind = S.ind && S.ind[i], kind = $('indicator').value;
-      if (ind && kind === 'momentum' && Math.abs(ind.mom) > .005) {
+      const ind = S.ind && S.ind[i];
+      if (ind && IND.has('momentum') && Math.abs(ind.mom) > .005) {
         // comet tail along the ring behind the label: longer = faster move over the window.
         // Rising holdings climb clockwise in the magnet layout, so their tail trails anticlockwise.
         const full = S.mode === 'live' ? 1 : 5, len = Math.min(1, Math.abs(ind.mom) / full) * .5, dirA = ind.mom > 0 ? -1 : 1;
@@ -945,7 +963,7 @@
       }
       const c = Math.cos(mid), sn = Math.sin(mid), left = c < 0;
       const p = st.pct[i], on = hot || top, cash = fr.cash[i];
-      const pointed = !!ind && ((kind === 'alerts' && ind.alert) || (kind === 'custom' && ind.rule));
+      const pointed = !!ind && ((IND.has('alerts') && ind.alert) || (IND.has('custom') && ind.rule));
       rctx.save();
       if (fr.ext[i]) rctx.globalAlpha = .75;
       const rL = rLab + st.kick[i] * font * 1.4; // losers get knocked outward when shoved
@@ -984,21 +1002,23 @@
       rctx.fillStyle = dirC ? textOn(dirC) : C.ink;
       rctx.fillText(tk, pillX + pillW / 2, 1);
       // badge past the outer end of the pill
-      let badge = null;
-      if (ind && kind === 'signals') {
-        if (ind.cross > 0) badge = ['\u25b2', C.up];
-        else if (ind.cross < 0) badge = ['\u25bc', C.down];
-        else if (ind.rsi != null && ind.rsi >= 70) badge = ['\u25c6', C.flat];
-        else if (ind.rsi != null && ind.rsi <= 30) badge = ['\u25c7', C.accent];
-      } else if (ind && kind === 'custom' && ind.rule) badge = ['\u2605', C.accent];
-      if (badge) {
-        const br = pillH * .46, bx = left ? pillX - br - 3 : pillX + pillW + br + 3;
+      // badges past the outer end of the pill; with two badge indicators they sit side by side
+      const badges = [];
+      if (ind && IND.has('signals')) {
+        if (ind.cross > 0) badges.push(['\u25b2', C.up]);
+        else if (ind.cross < 0) badges.push(['\u25bc', C.down]);
+        else if (ind.rsi != null && ind.rsi >= 70) badges.push(['\u25c6', C.flat]);
+        else if (ind.rsi != null && ind.rsi <= 30) badges.push(['\u25c7', C.accent]);
+      }
+      if (ind && IND.has('custom') && ind.rule) badges.push(['\u2605', C.accent]);
+      badges.forEach((badge, bi) => {
+        const br = pillH * .46, off = pillH * .95 * bi, bx = left ? pillX - br - 3 - off : pillX + pillW + br + 3 + off;
         rctx.beginPath(); rctx.arc(bx, 0, br, 0, TAU);
         rctx.fillStyle = C.surface; rctx.fill();
         rctx.lineWidth = 1.5; rctx.strokeStyle = badge[1]; rctx.stroke();
         rctx.fillStyle = badge[1]; rctx.textAlign = 'center'; rctx.font = `${font * .8}px ${MONO}`;
         rctx.textBaseline = 'middle'; rctx.fillText(badge[0], bx, 1);
-      }
+      });
       if (!cash) {
         rctx.textAlign = left ? 'right' : 'left'; rctx.font = pFont; // anchored at the ring side
         rctx.fillStyle = p > .005 ? C.up : p < -.005 ? C.down : C.flat;
@@ -1025,7 +1045,7 @@
     }
     rctx.fillStyle = C.muted;
     rctx.fillText(footText(fr, st, hotI), cx, cy + rIn * .47);
-    if (S.ind && $('indicator').value === 'breadth') {
+    if (S.ind && IND.has('breadth')) {
       // dial over the date: share of holdings trading above VWAP (replay: above the 20-day average)
       const vals = S.ind.filter(Boolean), above = vals.filter(m => m.vwap > 0).length, f = vals.length ? above / vals.length : 0;
       const r = rIn * .84, a0 = Math.PI * 1.32, a1 = Math.PI * 1.68;
@@ -1157,7 +1177,7 @@
     $('lgExt').hidden = !fr.ext.some(Boolean);
     $('guides').textContent = MEASURES[fr.measure].guides;
     $('lgShade').textContent = MEASURES[fr.measure].shadeNote;
-    const kind = $('indicator').value, live = S.mode === 'live';
+    const live = S.mode === 'live';
     const notes = {
       momentum: `Tail: ${live ? '15-minute' : '5-day'} momentum, longer = faster`,
       range: `Notch: price within ${live ? "today's" : 'the 20-day'} range, outer edge = high`,
@@ -1167,9 +1187,12 @@
       breadth: `Dial: holdings above ${live ? 'VWAP' : 'their 20-day average'}`,
       custom: '★ and pointed pill: your rule is true'
     };
-    $('lgInd').hidden = kind === 'none';
-    $('lgIndText').textContent = notes[kind] || '';
-    $('ruleBox').hidden = kind !== 'custom';
+    const kinds = [...activeInd()];
+    [['lgInd', 'lgIndText'], ['lgInd2', 'lgIndText2']].forEach(([box, txt], k) => {
+      $(box).hidden = !kinds[k];
+      $(txt).textContent = notes[kinds[k]] || '';
+    });
+    $('ruleBox').hidden = !kinds.includes('custom');
   }
 
   // ---------- value line: intraday in live, day-by-day in replay ----------
@@ -1290,7 +1313,9 @@
   $('indicator').value = store.get('ring.indicator') || 'none';
   $('customRule').value = store.get('ring.rule') || $('customRule').value;
   compileRule();
+  $('indicator2').value = store.get('ring.indicator2') || 'none';
   $('indicator').addEventListener('change', () => { store.set('ring.indicator', $('indicator').value); reshow(); });
+  $('indicator2').addEventListener('change', () => { store.set('ring.indicator2', $('indicator2').value); reshow(); });
   $('customRule').addEventListener('input', () => { store.set('ring.rule', $('customRule').value); compileRule(); reshow(); });
   $('measure').addEventListener('change', () => { S.measure = $('measure').value; S.rank = null; S.levels = new Map(); S.prevMarks = null; reshow(); });
   document.addEventListener('keydown', e => {
