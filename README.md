@@ -203,42 +203,63 @@ filled in and that you're a member of that league.
 
 `brokerage_ring.html` shows a brokerage account as a ring. Each holding is a slice
 sized by its share of the account, with its ticker in a pill around the outside:
-green when the stock is up from yesterday's close, red when it's down. A bar on
-each slice shows the size of the move. Tickers run clockwise from the lowest % to
-the highest: gainers pull together around 12 o'clock like magnets, and losers are
-pushed away, leaving a gap on each side of the green block. Two tickers only trade
-places once one leads by more than 0.1 points, so near-ties don't flicker.
+green when the stock is up from yesterday's close, red when it's down. A legend
+under the ring explains each mark.
 
-Each slice's **thickness** is trading volume: shares traded today against a normal
-day at the same point in the session (the 20-day average, weighted for the busier
-open and close). A dashed circle marks normal volume; thicker means busier.
+- **Order:** tickers run clockwise from the lowest move to the highest. Gainers
+  pull together around 12 o'clock like magnets; losers are pushed away, leaving a
+  gap on each side of the green block. Two tickers only trade places once one
+  clearly leads, so near-ties don't flicker.
+- **% change or $ impact:** bars and order follow either each holding's own %
+  move or what it did to your account in dollars.
+- **Thickness** is trading volume: shares traded today against a normal day at
+  the same point in the session (20-day average, weighted for the busier open and
+  close). A dashed circle marks normal volume.
+- **Cash** is a neutral slice. Positions under 1% are grouped as **Other**; click
+  it (or "Show separately") to break it out.
+- **Benchmark:** the center shows SPY's day and how far ahead or behind you are.
+- **Pulses:** a pill pulses when its holding flips between up and down, or its
+  volume passes 2x normal.
 
-**Live** follows prices through the trading day. Every quote nudges the ring
-toward the new layout with spring physics, so small price changes show up as a
-gentle drift and a slice slides across only when its rank changes.
+**Live** follows prices through the trading day with spring physics, so small
+price changes show up as a gentle drift. Drag the line under the ring (or use
+the arrow keys) to rewind today; "Back to live" returns. Pre-market and
+after-hours prices are shown dimmed with dashed pills.
 
 ```
-cp holdings.example.csv holdings.csv     # then edit: ticker,shares
+cp holdings.example.csv holdings.csv     # then edit: ticker,shares (+ a CASH row)
 pip install -r requirements.txt
+python brokerage_server.py --check       # one fetch, printed as a table
 python brokerage_server.py               # → http://localhost:8889
 ```
 
+Instead of maintaining `holdings.csv`, point `HOLDINGS_FILE` at a positions export
+from your brokerage. The header row is found automatically; Symbol / Quantity /
+Market Value style columns are recognised, money-market and "Cash & Cash
+Investments" rows count as cash, totals rows are skipped, and the same symbol
+across accounts is added together. The file is re-read on every poll, so saving a
+fresh export updates the ring. (Tested against sample layouts, not every broker's
+real file; `--check` shows what was read.)
+
 | Setting | What it does |
 | --- | --- |
-| `QUOTES_PROVIDER=yahoo` | Default. Yahoo Finance chart API, no key. Unofficial, and some quotes are delayed. Includes volume. |
-| `QUOTES_PROVIDER=finnhub` + `FINNHUB_API_KEY` | Finnhub quotes. The free tier allows 60 calls a minute, so polling slows down for large portfolios. No volume, so slices keep normal thickness. |
-| `QUOTES_PROVIDER=sim` | Made-up prices, for trying it out offline. |
+| `QUOTES_PROVIDER=yahoo` | Default. Yahoo Finance chart API, no key. Unofficial, and some quotes are delayed. Includes pre/after-market prices and volume. |
+| `QUOTES_PROVIDER=finnhub` + `FINNHUB_API_KEY` | Finnhub quotes. The free tier allows 60 calls a minute, so polling slows down for large portfolios. No volume or extended hours. |
+| `QUOTES_PROVIDER=sim` | Made-up prices, for trying it out offline. `SIM_PHASE=pre`, `post`, `closed` or `half` forces a market phase. |
+| `BENCHMARK` | Ticker to compare against (default `SPY`; empty turns it off). |
+| `HOLDINGS_FILE` | Holdings or brokerage export to read (default `holdings.csv`). |
 
-Quotes refresh every 15 seconds while the market is open (9:30–4:00 ET, weekdays;
-exchange holidays aren't handled). After the close the server saves that day's
-prices to `brokerage_history.csv`. `holdings.csv` and the history file are
-git-ignored.
+Market hours follow the NYSE calendar: weekends, the ten regular holidays and the
+1:00 PM early closes. One-off closures aren't known in advance. Quotes refresh
+every 15 seconds in the regular session and every minute before and after it.
+After the close the server saves the day's prices and volume to
+`brokerage_history.csv`. `holdings.csv` and the history file are git-ignored.
 
 **Daily replay** steps through closing values day by day, from the saved history,
-a CSV you load (`date,ticker,value` or `date,ticker,shares,price`, plus an optional
-`volume` column), or sample data.
-Opening the HTML file directly, without the server, plays a simulated trading
-session instead of live quotes.
+a CSV you load (`date,ticker,value` or `date,ticker,shares,price`, optional
+`volume`; a `CASH` row is cash and `$SPY` rows are the benchmark), or sample data.
+Opening the HTML file directly, without the server, plays a simulated trading day
+including pre-market and after-hours.
 
 ---
 
