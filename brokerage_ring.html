@@ -145,6 +145,9 @@
   .rule input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .rule code { font: 11.5px var(--mono); color: var(--ink); }
   .rule-err { color: var(--down); flex-basis: 100%; }
+  .cap { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .cap input { width: 110px; accent-color: var(--accent); }
+  .cap output { font: 500 13px var(--mono); color: var(--ink); min-width: 3.2em; }
   .sw-cap { width: 16px; height: 10px; background: var(--slice); border: 1px solid var(--rule); border-top: 2px dashed var(--ink); border-radius: 2px; }
   .sw-ext { width: 18px; height: 10px; border: 1px dashed var(--ink); border-radius: 999px; opacity: .75; }
   .other-note { padding: 8px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); }
@@ -182,7 +185,7 @@
         <span id="lgGap"><i class="sw sw-gap"></i>Gap: splits gainers (green arc) from losers</span>
         <span id="lgInd" hidden><i class="sw sw-ind"></i><span id="lgIndText"></span></span>
         <span id="lgInd2" hidden><i class="sw sw-ind"></i><span id="lgIndText2"></span></span>
-        <span id="lgCap" hidden><i class="sw sw-cap"></i>Dashed edge: slice capped at 15%, real share is larger</span>
+        <span id="lgCap" hidden><i class="sw sw-cap"></i><span id="lgCapText">Dashed edge: slice capped at 15%, real share is larger</span></span>
         <span id="lgExt" hidden><i class="sw sw-ext"></i>Dashed pill: pre/after-hours price</span>
       </div>
 
@@ -229,8 +232,12 @@
         <select id="sizing" aria-label="Slice sizing">
           <option value="true" selected>True weight</option>
           <option value="sqrt">Square-root sizing</option>
-          <option value="cap">Capped at 15%</option>
+          <option value="cap" id="capOpt">Capped at 15%</option>
         </select>
+        <label class="cap" id="capBox" hidden>Cap
+          <input type="range" id="capPct" min="5" max="40" step="1" value="15" aria-label="Largest slice, percent of the ring">
+          <output id="capOut" for="capPct">15%</output>
+        </label>
         <select id="layout" aria-label="Ring layout">
           <option value="magnet" selected>Magnetize gainers</option>
           <option value="spin">Turn top mover to 12 o’clock</option>
@@ -549,7 +556,9 @@
   // sizing uses √value instead, and "capped" trims any slice over SIZE_CAP and shares the spare
   // room among the rest in proportion, so one big position can't crowd out the others. Only the
   // ring changes: the table, readouts and the Other grouping keep using true weights.
-  const SIZE_CAP = 0.15;
+  // the cap from the slider; a cap too low to fill the ring (e.g. 5% with 16 slices) is raised to the lowest that works
+  const chosenCap = () => +$('capPct').value / 100;
+  const effectiveCap = n => Math.max(chosenCap(), n ? 1 / n + 1e-6 : 1);
   function displayWeights(ring) {
     const mode = $('sizing').value;
     if (mode === 'sqrt') {
@@ -557,8 +566,8 @@
       return r.map(v => v / t);
     }
     const w = ring.map(x => x.w);
-    if (mode !== 'cap' || ring.length * SIZE_CAP < 1) return w;
-    const capped = new Set();
+    if (mode !== 'cap') return w;
+    const SIZE_CAP = effectiveCap(ring.length), capped = new Set();
     for (let it = 0; it < ring.length; it++) { // repeat in case the extra pushes another slice over
       const over = w.map((v, i) => i).filter(i => !capped.has(i) && w[i] > SIZE_CAP + 1e-9);
       if (!over.length) break;
@@ -573,6 +582,10 @@
 
   // ---------- layout: where each slice should sit ----------
   const isUp = (fr, i) => !fr.cash[i] && fr.pct[i] > .005;
+  function capLabel(fr) {
+    const eff = effectiveCap(fr.keys.length), pct = v => (Math.round(v * 1000) / 10) + '%';
+    return eff > chosenCap() + 1e-5 ? `${pct(eff)} (raised from ${pct(chosenCap())} so ${fr.keys.length} slices fill the ring)` : pct(chosenCap());
+  }
   function markCapped(fr) {
     fr.capped = fr.dw.map((v, i) => $('sizing').value === 'cap' && fr.w[i] > v + 1e-6);
     return fr;
@@ -1222,8 +1235,10 @@
     $('lgShade').textContent = MEASURES[fr.measure].shadeNote;
     const sizing = $('sizing').value;
     $('lgSlice').textContent = sizing === 'sqrt' ? 'Slice: square-root of value (big holdings shrunk, small ones enlarged)'
-      : sizing === 'cap' ? 'Slice: share of the account, no slice over 15%' : 'Slice: share of the account';
+      : sizing === 'cap' ? `Slice: share of the account, no slice over ${capLabel(fr)}` : 'Slice: share of the account';
     $('lgCap').hidden = !fr.capped || !fr.capped.some(Boolean);
+    $('lgCapText').textContent = `Dashed edge: slice capped at ${capLabel(fr)}, real share is larger`;
+    $('capBox').hidden = sizing !== 'cap';
     const live = S.mode === 'live';
     const notes = {
       momentum: `Tail: ${live ? '15-minute' : '5-day'} momentum, longer = faster`,
@@ -1365,6 +1380,10 @@
   $('indicator2').addEventListener('change', () => { store.set('ring.indicator2', $('indicator2').value); reshow(); });
   $('sizing').value = store.get('ring.sizing') || 'true';
   $('sizing').addEventListener('change', () => { store.set('ring.sizing', $('sizing').value); reshow(); });
+  const syncCap = () => { $('capOut').textContent = $('capPct').value + '%'; $('capOpt').textContent = `Capped at ${$('capPct').value}%`; };
+  $('capPct').value = store.get('ring.cap') || 15;
+  syncCap();
+  $('capPct').addEventListener('input', () => { syncCap(); store.set('ring.cap', $('capPct').value); reshow(); });
   $('customRule').addEventListener('input', () => { store.set('ring.rule', $('customRule').value); compileRule(); reshow(); });
   $('measure').addEventListener('change', () => { S.measure = $('measure').value; S.rank = null; S.levels = new Map(); S.prevMarks = null; reshow(); });
   document.addEventListener('keydown', e => {
