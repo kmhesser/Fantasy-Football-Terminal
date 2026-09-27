@@ -98,6 +98,8 @@
   td:first-child { text-align: left; font-weight: 600; }
   tr.row { cursor: pointer; }
   tr.row:hover, tr.row.hot { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  .tk { display: inline-block; font: 500 12px var(--mono); padding: 1px 8px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); }
+  tr.row.hot .tk, tr.row:hover .tk { border-color: var(--accent); color: var(--accent); }
   .up { color: var(--up); }
   .dn { color: var(--down); }
   .flat { color: var(--flat); }
@@ -402,33 +404,44 @@
       rctx.stroke();
     }
 
-    // labels: radial, flipped on the left half so they read left-to-right
+    // labels: ticker in a pill + day %, radial, flipped on the left half so they read left-to-right
     rctx.textBaseline = 'middle';
+    const padX = font * .55, pillH = font * 1.6, gapX = font * .45;
     for (let i = 0; i < n; i++) {
       const [a0, a1] = mids[i], sweep = a1 - a0;
       const hot = S.hot === i, top = st.top === i;
-      if (sweep * rLab < font * .95 && !hot) continue;
+      if (sweep * rLab < pillH * 1.05 && !hot) continue;
       const mid = (a0 + a1) / 2;
       const c = Math.cos(mid), sn = Math.sin(mid);
       const left = c < 0;
-      const p = st.pct[i];
+      const p = st.pct[i], on = hot || top;
       rctx.save();
       rctx.translate(cx + c * rLab, cy + sn * rLab);
       rctx.rotate(left ? mid + Math.PI : mid);
-      rctx.textAlign = left ? 'right' : 'left';
-      const tk = M.tickers[i], ps = '  ' + pctStr(p);
-      const tkFont = `${hot || top ? 600 : 500} ${font}px ${MONO}`, pFont = `400 ${font * .82}px ${MONO}`;
+      const tk = M.tickers[i], ps = pctStr(p);
+      const tkFont = `${on ? 600 : 500} ${font}px ${MONO}`, pFont = `400 ${font * .82}px ${MONO}`;
       rctx.font = tkFont;
-      const tw = rctx.measureText(tk).width;
+      const pillW = rctx.measureText(tk).width + padX * 2;
       rctx.font = pFont;
       const pw = rctx.measureText(ps).width;
-      // reads "TICKER  +x.xx%" left-to-right on both halves
+      // reads "[TICKER] +x.xx%" left-to-right on both halves; x runs outward on the right, inward on the left
+      const pillX = left ? -(pw + gapX + pillW) : 0;
+      const pctX = left ? -pw : pillW + gapX;
+      rctx.beginPath();
+      rctx.roundRect(pillX, -pillH / 2, pillW, pillH, pillH / 2);
+      rctx.fillStyle = on ? C.accent : C.surface;
+      rctx.fill();
+      rctx.lineWidth = 1;
+      rctx.strokeStyle = on ? C.accent : C.rule;
+      rctx.stroke();
+      rctx.textAlign = 'center';
       rctx.font = tkFont;
-      rctx.fillStyle = hot || top ? C.accent : C.ink;
-      rctx.fillText(tk, left ? -pw : 0, 0);
+      rctx.fillStyle = on ? C.surface : C.ink;
+      rctx.fillText(tk, pillX + pillW / 2, 1);
+      rctx.textAlign = 'left';
       rctx.font = pFont;
       rctx.fillStyle = p > .005 ? C.up : p < -.005 ? C.down : C.flat;
-      rctx.fillText(ps, left ? 0 : tw, 1);
+      rctx.fillText(ps, pctX, 1);
       rctx.restore();
     }
 
@@ -492,7 +505,7 @@
       const p = M.pct[d][i], cls = p > .005 ? 'up' : p < -.005 ? 'dn' : 'flat';
       const w = Math.round(Math.abs(p) / maxAbs * 36);
       return `<tr class="row${S.hot === i ? ' hot' : ''}" data-i="${i}">
-        <td>${M.tickers[i]}</td>
+        <td><span class="tk">${M.tickers[i]}</span></td>
         <td>${money(M.values[d][i])}</td>
         <td>${(M.weights[d][i] * 100).toFixed(1)}%</td>
         <td class="${cls}"><span class="mbar" style="width:${w}px;background:currentColor"></span>${pctStr(p)}</td></tr>`;
