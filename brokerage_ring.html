@@ -99,7 +99,9 @@
   tr.row { cursor: pointer; }
   tr.row:hover, tr.row.hot { background: color-mix(in srgb, var(--accent) 9%, transparent); }
   .tk { display: inline-block; font: 500 12px var(--mono); padding: 1px 8px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); }
-  tr.row.hot .tk, tr.row:hover .tk { border-color: var(--accent); color: var(--accent); }
+  .tk.up { background: var(--up); border-color: var(--up); color: var(--surface); }
+  .tk.dn { background: var(--down); border-color: var(--down); color: var(--surface); }
+  tr.row.hot .tk, tr.row:hover .tk { outline: 2px solid var(--accent); outline-offset: 1px; }
   .up { color: var(--up); }
   .dn { color: var(--down); }
   .flat { color: var(--flat); }
@@ -427,16 +429,24 @@
       // reads "[TICKER] +x.xx%" left-to-right on both halves; x runs outward on the right, inward on the left
       const pillX = left ? -(pw + gapX + pillW) : 0;
       const pctX = left ? -pw : pillW + gapX;
+      // pill: green when up on the day, red when down, neutral when flat
+      const dirC = p > .005 ? C.up : p < -.005 ? C.down : null;
+      if (on) {
+        const o = 2.5;
+        rctx.beginPath();
+        rctx.roundRect(pillX - o, -pillH / 2 - o, pillW + o * 2, pillH + o * 2, pillH / 2 + o);
+        rctx.lineWidth = 2; rctx.strokeStyle = C.accent; rctx.stroke();
+      }
       rctx.beginPath();
       rctx.roundRect(pillX, -pillH / 2, pillW, pillH, pillH / 2);
-      rctx.fillStyle = on ? C.accent : C.surface;
+      rctx.fillStyle = dirC || C.surface;
       rctx.fill();
       rctx.lineWidth = 1;
-      rctx.strokeStyle = on ? C.accent : C.rule;
+      rctx.strokeStyle = dirC || C.rule;
       rctx.stroke();
       rctx.textAlign = 'center';
       rctx.font = tkFont;
-      rctx.fillStyle = on ? C.surface : C.ink;
+      rctx.fillStyle = dirC ? C.surface : C.ink;
       rctx.fillText(tk, pillX + pillW / 2, 1);
       rctx.textAlign = 'left';
       rctx.font = pFont;
@@ -505,7 +515,7 @@
       const p = M.pct[d][i], cls = p > .005 ? 'up' : p < -.005 ? 'dn' : 'flat';
       const w = Math.round(Math.abs(p) / maxAbs * 36);
       return `<tr class="row${S.hot === i ? ' hot' : ''}" data-i="${i}">
-        <td><span class="tk">${M.tickers[i]}</span></td>
+        <td><span class="tk ${cls}">${M.tickers[i]}</span></td>
         <td>${money(M.values[d][i])}</td>
         <td>${(M.weights[d][i] * 100).toFixed(1)}%</td>
         <td class="${cls}"><span class="mbar" style="width:${w}px;background:currentColor"></span>${pctStr(p)}</td></tr>`;
