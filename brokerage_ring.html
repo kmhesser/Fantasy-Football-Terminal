@@ -145,6 +145,7 @@
   .rule input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .rule code { font: 11.5px var(--mono); color: var(--ink); }
   .rule-err { color: var(--down); flex-basis: 100%; }
+  .sw-cap { width: 16px; height: 10px; background: var(--slice); border: 1px solid var(--rule); border-top: 2px dashed var(--ink); border-radius: 2px; }
   .sw-ext { width: 18px; height: 10px; border: 1px dashed var(--ink); border-radius: 999px; opacity: .75; }
   .other-note { padding: 8px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); }
   .other-note button, #backLive { font-size: 12px; padding: 2px 8px; margin-left: 4px; }
@@ -181,6 +182,7 @@
         <span id="lgGap"><i class="sw sw-gap"></i>Gap: splits gainers (green arc) from losers</span>
         <span id="lgInd" hidden><i class="sw sw-ind"></i><span id="lgIndText"></span></span>
         <span id="lgInd2" hidden><i class="sw sw-ind"></i><span id="lgIndText2"></span></span>
+        <span id="lgCap" hidden><i class="sw sw-cap"></i>Dashed edge: slice capped at 15%, real share is larger</span>
         <span id="lgExt" hidden><i class="sw sw-ext"></i>Dashed pill: pre/after-hours price</span>
       </div>
 
@@ -227,6 +229,7 @@
         <select id="sizing" aria-label="Slice sizing">
           <option value="true" selected>True weight</option>
           <option value="sqrt">Square-root sizing</option>
+          <option value="cap">Capped at 15%</option>
         </select>
         <select id="layout" aria-label="Ring layout">
           <option value="magnet" selected>Magnetize gainers</option>
@@ -537,22 +540,43 @@
       ...ctx, items, measure: S.measure, scale: M_.scale, hyst: M_.hyst, steps: M_.steps,
       level: col('level'), keys: col('key'), labels: ring.map(x => x.label || x.key), members: ring.map(x => x.members || null),
       cash: col('cash'), ext: col('ext'), val: col('val'), w: col('w'), pct: col('pct'), d: col('d'), m: col('m'),
-      dw: displayWeights(ring),
+      dw: displayWeights(ring), capped: null,
       rvol: col('rvol'), total, prevTotal, chg: total - prevTotal, chgP: prevTotal ? (total / prevTotal - 1) * 100 : 0
     };
   }
 
   // How much of the ring each slice gets. "True weight" is its share of the account; square-root
-  // sizing uses √value instead, so one big position can't crowd out the rest. Only the ring
-  // changes: the table, readouts and the Other grouping keep using true weights.
+  // sizing uses √value instead, and "capped" trims any slice over SIZE_CAP and shares the spare
+  // room among the rest in proportion, so one big position can't crowd out the others. Only the
+  // ring changes: the table, readouts and the Other grouping keep using true weights.
+  const SIZE_CAP = 0.15;
   function displayWeights(ring) {
-    if ($('sizing').value !== 'sqrt') return ring.map(x => x.w);
-    const r = ring.map(x => Math.sqrt(Math.max(0, x.val))), t = r.reduce((a, b) => a + b, 0) || 1;
-    return r.map(v => v / t);
+    const mode = $('sizing').value;
+    if (mode === 'sqrt') {
+      const r = ring.map(x => Math.sqrt(Math.max(0, x.val))), t = r.reduce((a, b) => a + b, 0) || 1;
+      return r.map(v => v / t);
+    }
+    const w = ring.map(x => x.w);
+    if (mode !== 'cap' || ring.length * SIZE_CAP < 1) return w;
+    const capped = new Set();
+    for (let it = 0; it < ring.length; it++) { // repeat in case the extra pushes another slice over
+      const over = w.map((v, i) => i).filter(i => !capped.has(i) && w[i] > SIZE_CAP + 1e-9);
+      if (!over.length) break;
+      let spare = 0;
+      for (const i of over) { spare += w[i] - SIZE_CAP; w[i] = SIZE_CAP; capped.add(i); }
+      const rest = w.map((v, i) => i).filter(i => !capped.has(i)), restSum = rest.reduce((a, i) => a + w[i], 0);
+      if (!restSum) break;
+      for (const i of rest) w[i] += spare * w[i] / restSum;
+    }
+    return w;
   }
 
   // ---------- layout: where each slice should sit ----------
   const isUp = (fr, i) => !fr.cash[i] && fr.pct[i] > .005;
+  function markCapped(fr) {
+    fr.capped = fr.dw.map((v, i) => $('sizing').value === 'cap' && fr.w[i] > v + 1e-6);
+    return fr;
+  }
   function layout(fr) {
     const { m } = fr, w = fr.dw, n = w.length; // w: ring share (true or square-root)
     const mode = $('layout').value;
@@ -624,7 +648,7 @@
   // changes make small target moves, so the ring drifts; a rank swap slides.
   function show(view, instant = false) {
     S.view = view;
-    const fr = S.frame = buildFrame(view);
+    const fr = S.frame = markCapped(buildFrame(view));
     if (S.cur && S.to && S.to.keys !== fr.keys.join('|')) S.rank = null;
     const tg = layout(fr);
     const fresh = !S.cur || S.to.keys !== tg.keys;
@@ -899,6 +923,11 @@
         band(inner[i], rOut, s0, s1); // restore the slice path for the outline below
       }
       if (hot || top) { rctx.lineWidth = 2; rctx.strokeStyle = C.accent; rctx.stroke(); }
+      if (fr.capped[i]) { // capped: its real share is bigger than the slice
+        rctx.save(); rctx.setLineDash([5, 3]); rctx.lineWidth = 2; rctx.strokeStyle = C.ink;
+        rctx.beginPath(); rctx.arc(cx, cy, rOut - 3, s0 + .004, s1 - .004); rctx.stroke(); rctx.restore();
+        band(inner[i], rOut, s0, s1);
+      }
       // move bar
       if (!fr.cash[i] && Math.abs(p) > .005) {
         const Lb = Math.max(1.5, mag * bar), up = p > 0;
@@ -1191,8 +1220,10 @@
     $('lgExt').hidden = !fr.ext.some(Boolean);
     $('guides').textContent = MEASURES[fr.measure].guides;
     $('lgShade').textContent = MEASURES[fr.measure].shadeNote;
-    $('lgSlice').textContent = $('sizing').value === 'sqrt'
-      ? 'Slice: square-root of value (big holdings shrunk, small ones enlarged)' : 'Slice: share of the account';
+    const sizing = $('sizing').value;
+    $('lgSlice').textContent = sizing === 'sqrt' ? 'Slice: square-root of value (big holdings shrunk, small ones enlarged)'
+      : sizing === 'cap' ? 'Slice: share of the account, no slice over 15%' : 'Slice: share of the account';
+    $('lgCap').hidden = !fr.capped || !fr.capped.some(Boolean);
     const live = S.mode === 'live';
     const notes = {
       momentum: `Tail: ${live ? '15-minute' : '5-day'} momentum, longer = faster`,
