@@ -177,7 +177,7 @@
         <tbody id="rows"></tbody>
       </table>
       <div class="notes" id="notes">
-        <p><b>Magnetize gainers</b> pulls every green ticker together at 12 o’clock, strongest gainer in the middle. Red tickers are pushed away, leaving a gap on each side, and the biggest losers sink to 6 o’clock.</p>
+        <p><b>Magnetize gainers</b> lines the tickers up clockwise from the lowest % to the highest. The green ones pull together around 12 o’clock; the red ones are pushed away, leaving a gap on each side of the green block. Two tickers only trade places once one leads by more than 0.1 points, so they don’t flicker back and forth.</p>
         <p><b>Slice</b> is the holding's share of the account. <b>Bar</b> is today's move from the previous close: outward when up, inward when down. Dotted rings mark ±2.5% and ±5%.</p>
         <p><b>Live</b> follows prices through the trading day and drifts as they tick. Run <code>brokerage_server.py</code> to feed it your holdings and real quotes; without it the page plays a simulated session.</p>
         <p><b>Daily replay</b> steps through closing values day by day. <b>Load CSV</b> with a header row of <code>date,ticker,value</code> or <code>date,ticker,shares,price</code>, one row per holding per day. The file stays in your browser.</p>
@@ -200,6 +200,7 @@
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const BAR_SCALE = 5; // % move that fills the full bar length
   const TAU = Math.PI * 2, TOP = -Math.PI / 2, REPEL_GAP = 0.2;
+  const RANK_HYST = 0.1; // percentage points one holding must lead another by before they swap places
   const $ = id => document.getElementById(id);
 
   // ---------- sample book ----------
@@ -340,28 +341,28 @@
     let sw = w.map(v => v * TAU);
     let cl = [TOP, TOP];
     if (mode === 'magnet' && fr.moved) {
-      // Best gainer centred at 12 o'clock; each next-best attaches to whichever side
-      // of the block is shorter, so gainers pack together and the worst losers end up at 6.
-      // Losers are held off the gainer block by an empty buffer on each side (the repulsion).
-      const order = [...Array(n).keys()].sort((x, y) => pct[y] - pct[x]);
-      const gainers = order.filter(i => pct[i] > .005).length;
-      const buffer = gainers && gainers < order.filter(i => w[i] > 0).length ? REPEL_GAP : 0;
+      // One clockwise climb from the lowest % to the highest. The gainers form one block
+      // centred on 12 o'clock (lowest gainer left of 12, best gainer right of it); the losers
+      // wrap round the rest of the ring, worst first. An empty buffer on each side of the
+      // gainer block keeps the losers pushed away from it (the repulsion).
+      const order = rankOrder(pct).slice().reverse(); // lowest first
+      const up = order.filter(i => pct[i] > .005), down = order.filter(i => !(pct[i] > .005));
+      const buffer = up.length && down.some(i => w[i] > 0) ? REPEL_GAP : 0;
       const k = (TAU - 2 * buffer) / TAU;
       sw = w.map(v => v * TAU * k);
-      let Lf = TOP, R = TOP;
-      order.forEach((i, j) => {
-        if (j === gainers && buffer) { cl = [Lf, R]; Lf -= buffer; R += buffer; }
-        if (j === 0) { ang[i] = TOP - sw[i] / 2; Lf = ang[i]; R = ang[i] + sw[i]; }
-        else if (R - TOP <= TOP - Lf) { ang[i] = R; R += sw[i]; }
-        else { Lf -= sw[i]; ang[i] = Lf; }
-        if (j === gainers - 1 && !buffer) cl = [Lf, R];
-      });
+      const G = up.reduce((acc, i) => acc + sw[i], 0);
+      // all up or all down on the day: start the climb at 12 so the extremes meet at the top
+      let at = buffer ? TOP - G / 2 : TOP;
+      cl = [at, at + G];
+      for (const i of up) { ang[i] = at; at += sw[i]; }
+      at += buffer;
+      for (const i of down) { ang[i] = at; at += sw[i]; }
       // how hard each loser gets shoved: strongest right next to the gainer block
-      if (buffer) order.slice(gainers).forEach(i => {
+      if (buffer) for (const i of down) {
         const mid = ang[i] + sw[i] / 2;
-        const dist = Math.min(Math.abs(mid - cl[0]), Math.abs(mid - cl[1]));
-        near[i] = Math.max(0, 1 - dist / 1.4);
-      });
+        const off = e => { const d = Math.abs(((mid - e) % TAU + TAU) % TAU); return Math.min(d, TAU - d); };
+        near[i] = Math.max(0, 1 - Math.min(off(cl[0]), off(cl[1])) / 1.4);
+      }
     } else {
       if (mode === 'spin' && fr.moved) {
         let cum = 0;
@@ -377,6 +378,25 @@
     }
     return { w: w.slice(), sw, near, pct: pct.slice(), val: fr.val.slice(), total: fr.total, chg: fr.chg, chgP: fr.chgP,
              rot, ang, cl, mode, top: fr.moved && mode !== 'magnet' ? top : -1, best: fr.moved && pct[top] !== 0 ? top : -1 };
+  }
+
+  // Best-first order with a threshold, so holdings a hair apart don't keep trading places on every
+  // quote. Start from the last order and swap neighbours only when one leads by more than RANK_HYST;
+  // crossing between up and down on the day always moves right away (the pill changes colour).
+  function rankOrder(pct) {
+    const n = pct.length, up = i => pct[i] > .005;
+    let order = S.rank && S.rank.length === n ? S.rank.slice() : [...Array(n).keys()].sort((x, y) => pct[y] - pct[x]);
+    for (let pass = 0, swapped = true; swapped && pass < n * n; pass++) {
+      swapped = false;
+      for (let j = 0; j < n - 1; j++) {
+        const a = order[j], b = order[j + 1];
+        if ((up(b) && !up(a)) || (up(a) === up(b) && pct[b] - pct[a] > RANK_HYST)) {
+          order[j] = b; order[j + 1] = a; swapped = true;
+        }
+      }
+    }
+    S.rank = order;
+    return order;
   }
 
   // ---------- motion: springs toward the latest target ----------
@@ -606,7 +626,7 @@
   const rows = $('rows');
   function renderTable() {
     const fr = S.frame;
-    const idx = fr.tickers.map((_, i) => i).filter(i => fr.val[i] > 0).sort((a, b) => fr.pct[b] - fr.pct[a]);
+    const idx = fr.tickers.map((_, i) => i).filter(i => fr.val[i] > 0).sort((a, b) => fr.pct[a] - fr.pct[b]); // lowest first
     const maxAbs = Math.max(BAR_SCALE * .4, ...idx.map(i => Math.abs(fr.pct[i])));
     rows.innerHTML = idx.map(i => {
       const p = fr.pct[i], cls = p > .005 ? 'up' : p < -.005 ? 'dn' : 'flat';
@@ -792,7 +812,7 @@
   // ---------- modes ----------
   function setMode(mode) {
     stop();
-    S.mode = mode; S.cur = null; S.to = null; S.hot = -1;
+    S.mode = mode; S.cur = null; S.to = null; S.hot = -1; S.rank = null;
     $('mLive').setAttribute('aria-pressed', mode === 'live');
     $('mReplay').setAttribute('aria-pressed', mode === 'replay');
     $('replayCtl').hidden = mode !== 'replay';
@@ -819,7 +839,7 @@
     const f = e.target.files[0]; if (!f) return;
     const rd = new FileReader();
     rd.onload = () => {
-      try { buildReplay(parseCSV(rd.result)); setMode('replay'); }
+      try { buildReplay(parseCSV(rd.result)); S.rank = null; setMode('replay'); }
       catch (err) { $('src').innerHTML = `<span class="err">CSV not loaded: ${err.message}</span>`; }
     };
     rd.readAsText(f);

@@ -204,9 +204,10 @@ filled in and that you're a member of that league.
 `brokerage_ring.html` shows a brokerage account as a ring. Each holding is a slice
 sized by its share of the account, with its ticker in a pill around the outside:
 green when the stock is up from yesterday's close, red when it's down. A bar on
-each slice shows the size of the move. Gainers pull together at 12 o'clock like
-magnets, strongest in the middle; losers are pushed away and the worst sink to
-6 o'clock.
+each slice shows the size of the move. Tickers run clockwise from the lowest % to
+the highest: gainers pull together around 12 o'clock like magnets, and losers are
+pushed away, leaving a gap on each side of the green block. Two tickers only trade
+places once one leads by more than 0.1 points, so near-ties don't flicker.
 
 **Live** follows prices through the trading day. Every quote nudges the ring
 toward the new layout with spring physics, so small price changes show up as a
