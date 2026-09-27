@@ -539,9 +539,10 @@
       rctx.font = tkFont;
       const pillW = rctx.measureText(tk).width + padX * 2;
       rctx.font = pFont;
-      const pw = rctx.measureText(ps).width;
-      // reads "[TICKER] +x.xx%" left-to-right on both halves; x runs outward on the right, inward on the left
-      const pillX = left ? -(pw + gapX + pillW) : 0, pctX = left ? -pw : pillW + gapX;
+      // the % always sits between the ring and the pill; reserve a steady width so pills don't
+      // shuffle in and out as the number changes. x runs outward on the right, inward on the left.
+      const pw = Math.max(rctx.measureText(ps).width, rctx.measureText('+0.00%').width);
+      const pillX = left ? -(pw + gapX + pillW) : pw + gapX;
       // pill: green when up on the day, red when down, neutral when flat
       const dirC = p > .005 ? C.up : p < -.005 ? C.down : null;
       if (on) {
@@ -557,9 +558,9 @@
       rctx.textAlign = 'center'; rctx.font = tkFont;
       rctx.fillStyle = dirC ? C.surface : C.ink;
       rctx.fillText(tk, pillX + pillW / 2, 1);
-      rctx.textAlign = 'left'; rctx.font = pFont;
+      rctx.textAlign = left ? 'right' : 'left'; rctx.font = pFont; // anchored at the ring side
       rctx.fillStyle = p > .005 ? C.up : p < -.005 ? C.down : C.flat;
-      rctx.fillText(ps, pctX, 1);
+      rctx.fillText(ps, 0, 1);
       rctx.restore();
     }
 
