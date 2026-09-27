@@ -209,6 +209,10 @@ the highest: gainers pull together around 12 o'clock like magnets, and losers ar
 pushed away, leaving a gap on each side of the green block. Two tickers only trade
 places once one leads by more than 0.1 points, so near-ties don't flicker.
 
+Each slice's **thickness** is trading volume: shares traded today against a normal
+day at the same point in the session (the 20-day average, weighted for the busier
+open and close). A dashed circle marks normal volume; thicker means busier.
+
 **Live** follows prices through the trading day. Every quote nudges the ring
 toward the new layout with spring physics, so small price changes show up as a
 gentle drift and a slice slides across only when its rank changes.
@@ -221,8 +225,8 @@ python brokerage_server.py               # → http://localhost:8889
 
 | Setting | What it does |
 | --- | --- |
-| `QUOTES_PROVIDER=yahoo` | Default. Yahoo Finance chart API, no key. Unofficial, and some quotes are delayed. |
-| `QUOTES_PROVIDER=finnhub` + `FINNHUB_API_KEY` | Finnhub quotes. The free tier allows 60 calls a minute, so polling slows down for large portfolios. |
+| `QUOTES_PROVIDER=yahoo` | Default. Yahoo Finance chart API, no key. Unofficial, and some quotes are delayed. Includes volume. |
+| `QUOTES_PROVIDER=finnhub` + `FINNHUB_API_KEY` | Finnhub quotes. The free tier allows 60 calls a minute, so polling slows down for large portfolios. No volume, so slices keep normal thickness. |
 | `QUOTES_PROVIDER=sim` | Made-up prices, for trying it out offline. |
 
 Quotes refresh every 15 seconds while the market is open (9:30–4:00 ET, weekdays;
@@ -231,7 +235,8 @@ prices to `brokerage_history.csv`. `holdings.csv` and the history file are
 git-ignored.
 
 **Daily replay** steps through closing values day by day, from the saved history,
-a CSV you load (`date,ticker,value` or `date,ticker,shares,price`), or sample data.
+a CSV you load (`date,ticker,value` or `date,ticker,shares,price`, plus an optional
+`volume` column), or sample data.
 Opening the HTML file directly, without the server, plays a simulated trading
 session instead of live quotes.
 

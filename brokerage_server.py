@@ -13,9 +13,12 @@ portfolio is used so you can see it working.
 
 Quotes:
   QUOTES_PROVIDER=yahoo    (default) Yahoo Finance chart API. No key; unofficial,
-                           and some exchanges' quotes are delayed.
+                           and some exchanges' quotes are delayed. Includes today's
+                           volume and the 20-day average volume the ring uses for
+                           slice thickness.
   QUOTES_PROVIDER=finnhub  Finnhub /quote. Set FINNHUB_API_KEY. Free tier allows
                            60 calls/min, so polling slows down for big portfolios.
+                           No volume, so slices keep their normal thickness.
   QUOTES_PROVIDER=sim      Random-walk prices, for trying it out offline.
 
 After each close the server appends that day's prices to brokerage_history.csv,
@@ -45,6 +48,7 @@ FINNHUB_API_KEY = os.environ.get('FINNHUB_API_KEY', '')
 PROVIDER = os.environ.get('QUOTES_PROVIDER', 'finnhub' if FINNHUB_API_KEY else 'yahoo').lower()
 POLL_SECONDS_OPEN = 15      # how often to fetch quotes while the market is open
 POLL_SECONDS_CLOSED = 300   # and while it's closed
+VOL_LOOKBACK_DAYS = 20      # days in the average-volume baseline
 PAGE_POLL_SECONDS = 5       # how often the page asks this server for the latest state
 
 ET = ZoneInfo('America/New_York')
@@ -81,23 +85,55 @@ def load_holdings():
     return rows, 'holdings.csv'
 
 
-# ── Quote providers: each returns {ticker: (price, previous_close)} ─────────
+# ── Quote providers: each returns {ticker: {price, prev_close, volume, avg_volume}} ─
+# volume is shares traded so far today and avg_volume the average full-day volume
+# over the last VOL_LOOKBACK_DAYS sessions; either may be None when unavailable.
 session = requests.Session()
 session.headers['User-Agent'] = 'Mozilla/5.0 (brokerage-ring)'
+
+
+avg_volume_cache = {}  # ticker -> (date, average daily volume)
+
+
+def yahoo_chart(ticker, **params):
+    sym = ticker.replace('.', '-')  # BRK.B → BRK-B
+    r = session.get(f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}', params=params, timeout=10)
+    r.raise_for_status()
+    return r.json()['chart']['result'][0]
+
+
+def yahoo_avg_volume(ticker):
+    """Average full-day volume over the last VOL_LOOKBACK_DAYS sessions before today, cached per day."""
+    today = datetime.now(ET).date()
+    if ticker in avg_volume_cache and avg_volume_cache[ticker][0] == today:
+        return avg_volume_cache[ticker][1]
+    res = yahoo_chart(ticker, range='3mo', interval='1d')
+    stamps = res.get('timestamp') or []
+    vols = (res.get('indicators', {}).get('quote') or [{}])[0].get('volume') or []
+    past = [v for ts, v in zip(stamps, vols)
+            if v and datetime.fromtimestamp(ts, ET).date() < today][-VOL_LOOKBACK_DAYS:]
+    avg = sum(past) / len(past) if past else None
+    avg_volume_cache[ticker] = (today, avg)
+    return avg
 
 
 def quotes_yahoo(tickers):
     out = {}
     for t in tickers:
-        sym = t.replace('.', '-')  # BRK.B → BRK-B
-        r = session.get(f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}',
-                        params={'range': '1d', 'interval': '1m'}, timeout=10)
-        r.raise_for_status()
-        meta = r.json()['chart']['result'][0]['meta']
+        res = yahoo_chart(t, range='1d', interval='1m')
+        meta = res['meta']
         price = meta.get('regularMarketPrice')
         prev = meta.get('chartPreviousClose') or meta.get('previousClose')
+        volume = meta.get('regularMarketVolume')
+        if volume is None:  # fall back to adding up today's one-minute bars
+            bars = (res.get('indicators', {}).get('quote') or [{}])[0].get('volume') or []
+            volume = sum(v for v in bars if v) or None
+        try:
+            avg = yahoo_avg_volume(t)
+        except Exception:
+            avg = None
         if price and prev:
-            out[t] = (float(price), float(prev))
+            out[t] = {'price': float(price), 'prev_close': float(prev), 'volume': volume, 'avg_volume': avg}
     return out
 
 
@@ -109,21 +145,28 @@ def quotes_finnhub(tickers):
         r.raise_for_status()
         j = r.json()
         if j.get('c') and j.get('pc'):
-            out[t] = (float(j['c']), float(j['pc']))
+            out[t] = {'price': float(j['c']), 'prev_close': float(j['pc']), 'volume': None, 'avg_volume': None}
     return out
 
 
 class Sim:
-    """Random-walk prices around made-up closes, for trying the page offline."""
+    """Random-walk prices and volume around made-up closes, for trying the page offline."""
     def __init__(self):
-        self.prev, self.px = {}, {}
+        self.prev, self.px, self.vol, self.avg, self.busy = {}, {}, {}, {}, {}
 
     def __call__(self, tickers):
+        step = POLL_SECONDS_OPEN / 23400  # fraction of a 6.5-hour session per poll
         for t in tickers:
             if t not in self.px:
                 self.prev[t] = self.px[t] = random.uniform(40, 600)
-            self.px[t] *= 1 + random.gauss(0, .015) * math.sqrt(POLL_SECONDS_OPEN / 23400)
-        return {t: (self.px[t], self.prev[t]) for t in tickers}
+                self.avg[t] = random.uniform(2e6, 60e6)
+                self.busy[t] = math.exp(random.gauss(0, .45))
+                self.vol[t] = 0.0
+            r = random.gauss(0, .015) * math.sqrt(step)
+            self.px[t] *= 1 + r
+            self.vol[t] += self.avg[t] * step * self.busy[t] * (1 + 150 * abs(r))
+        return {t: {'price': self.px[t], 'prev_close': self.prev[t], 'volume': self.vol[t],
+                    'avg_volume': self.avg[t]} for t in tickers}
 
 
 PROVIDERS = {
@@ -151,12 +194,17 @@ def save_close(day, holdings):
             if any(r.get('date') == day for r in csv.DictReader(f)):
                 return
     new = not os.path.exists(HISTORY_CSV)
+    with_volume = new
+    if not new:  # files from before volume was recorded keep their four columns
+        with open(HISTORY_CSV, newline='', encoding='utf-8') as f:
+            with_volume = 'volume' in (next(csv.reader(f), None) or [])
     with open(HISTORY_CSV, 'a', newline='', encoding='utf-8') as f:
         w = csv.writer(f)
         if new:
-            w.writerow(['date', 'ticker', 'shares', 'price'])
+            w.writerow(['date', 'ticker', 'shares', 'price', 'volume'])
         for h in holdings:
-            w.writerow([day, h['ticker'], h['shares'], round(h['price'], 4)])
+            row = [day, h['ticker'], h['shares'], round(h['price'], 4)]
+            w.writerow(row + [int(h['volume']) if h.get('volume') else ''] if with_volume else row)
 
 
 def poll_once():
@@ -164,8 +212,7 @@ def poll_once():
     tickers = [t for t, _ in book]
     quotes = fetch_quotes(tickers)
     missing = [t for t in tickers if t not in quotes]
-    holdings = [{'ticker': t, 'shares': s, 'price': quotes[t][0], 'prev_close': quotes[t][1]}
-                for t, s in book if t in quotes]
+    holdings = [{'ticker': t, 'shares': s, **quotes[t]} for t, s in book if t in quotes]
     now = datetime.now(ET)
     is_open = PROVIDER == 'sim' or market_open(now)
     with lock:

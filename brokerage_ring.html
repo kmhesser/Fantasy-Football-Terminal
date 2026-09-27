@@ -57,7 +57,7 @@
   }
   .src b { color: var(--ink); font-weight: 500; }
 
-  .main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; align-items: start; }
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
   @media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
 
   .stage { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -104,11 +104,13 @@
   }
   aside h2 span { font: 12px var(--mono); color: var(--muted); }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  th { font: 500 11px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); text-align: right; padding: 6px 12px; border-block: 1px solid var(--rule); }
+  th { font: 500 11px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); text-align: right; padding: 6px 8px; border-block: 1px solid var(--rule); }
   th:first-child { text-align: left; }
-  td { font: 13px var(--mono); padding: 5px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+  td { font: 13px var(--mono); padding: 5px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--rule); }
   tr:last-child td { border-bottom: 0; }
   td:first-child { text-align: left; font-weight: 600; }
+  td.vol { color: var(--muted); }
+  td.vol.hi { color: var(--ink); font-weight: 600; }
   tr.row { cursor: pointer; }
   tr.row:hover, tr.row.hot { background: color-mix(in srgb, var(--accent) 9%, transparent); }
   .tk { display: inline-block; font: 500 12px var(--mono); padding: 1px 8px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); }
@@ -118,7 +120,7 @@
   .up { color: var(--up); }
   .dn { color: var(--down); }
   .flat { color: var(--flat); }
-  .mbar { display: inline-block; height: 6px; border-radius: 1px; vertical-align: middle; margin-right: 8px; }
+  .mbar { display: inline-block; height: 6px; border-radius: 1px; vertical-align: middle; margin-right: 6px; }
   .notes { padding: 12px 14px; font-size: 12.5px; color: var(--muted); line-height: 1.6; border-top: 1px solid var(--rule); display: flex; flex-direction: column; gap: 6px; }
   .notes b { color: var(--ink); font-weight: 500; }
   .notes code { font: 12px var(--mono); color: var(--ink); }
@@ -173,14 +175,15 @@
     <aside>
       <h2>Movers <span id="asof"></span></h2>
       <table>
-        <thead><tr><th>Ticker</th><th>Value</th><th>Wt</th><th>Today</th></tr></thead>
+        <thead><tr><th>Ticker</th><th>Value</th><th>Wt</th><th title="Volume vs. a normal day at this time">Vol</th><th>Today</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="notes" id="notes">
         <p><b>Magnetize gainers</b> lines the tickers up clockwise from the lowest % to the highest. The green ones pull together around 12 o’clock; the red ones are pushed away, leaving a gap on each side of the green block. Two tickers only trade places once one leads by more than 0.1 points, so they don’t flicker back and forth.</p>
+        <p><b>Thickness</b> is trading volume: today's shares traded against a normal day at the same time (20-day average, weighted for the busier open and close). Thicker than the dashed circle means busier than usual.</p>
         <p><b>Slice</b> is the holding's share of the account. <b>Bar</b> is today's move from the previous close: outward when up, inward when down. Dotted rings mark ±2.5% and ±5%.</p>
         <p><b>Live</b> follows prices through the trading day and drifts as they tick. Run <code>brokerage_server.py</code> to feed it your holdings and real quotes; without it the page plays a simulated session.</p>
-        <p><b>Daily replay</b> steps through closing values day by day. <b>Load CSV</b> with a header row of <code>date,ticker,value</code> or <code>date,ticker,shares,price</code>, one row per holding per day. The file stays in your browser.</p>
+        <p><b>Daily replay</b> steps through closing values day by day. <b>Load CSV</b> with a header row of <code>date,ticker,value</code> or <code>date,ticker,shares,price</code> (add a <code>volume</code> column for thickness), one row per holding per day. The file stays in your browser.</p>
       </div>
     </aside>
   </div>
@@ -212,15 +215,21 @@
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
   }
-  // ticker, shares, starting price, daily volatility, beta
+  // ticker, shares, starting price, daily volatility, beta, average daily volume (millions)
   const BOOK = [
-    ['VTI', 140, 292, .009, 1.0], ['NVDA', 95, 168, .028, 1.7], ['AAPL', 60, 231, .015, 1.1],
-    ['MSFT', 28, 508, .013, 1.0], ['AMZN', 45, 224, .018, 1.2], ['GOOGL', 50, 246, .017, 1.1],
-    ['META', 12, 742, .021, 1.3], ['BRK.B', 20, 489, .009, .6], ['JPM', 30, 301, .013, .9],
-    ['COST', 8, 935, .011, .6], ['LLY', 9, 761, .019, .5], ['XOM', 40, 113, .014, .5],
-    ['SCHD', 180, 27.4, .008, .7], ['AMD', 40, 158, .029, 1.6], ['TSLA', 18, 421, .034, 1.8],
-    ['V', 22, 342, .011, .8]
+    ['VTI', 140, 292, .009, 1.0, 3.5], ['NVDA', 95, 168, .028, 1.7, 180], ['AAPL', 60, 231, .015, 1.1, 50],
+    ['MSFT', 28, 508, .013, 1.0, 20], ['AMZN', 45, 224, .018, 1.2, 40], ['GOOGL', 50, 246, .017, 1.1, 25],
+    ['META', 12, 742, .021, 1.3, 12], ['BRK.B', 20, 489, .009, .6, 4], ['JPM', 30, 301, .013, .9, 9],
+    ['COST', 8, 935, .011, .6, 2], ['LLY', 9, 761, .019, .5, 3], ['XOM', 40, 113, .014, .5, 15],
+    ['SCHD', 180, 27.4, .008, .7, 12], ['AMD', 40, 158, .029, 1.6, 45], ['TSLA', 18, 421, .034, 1.8, 90],
+    ['V', 22, 342, .011, .8, 6]
   ];
+  const VOL_LOOKBACK = 20; // days in the "normal volume" average
+  // Share of a day's volume traded by a point in the session (x = 0 at 9:30, 1 at 4:00).
+  // Trading is heavier near the open and close, so this is U-shaped rather than a straight line.
+  const volCurve = x => { x = Math.max(0, Math.min(1, x)); return (x + (Math.pow(2 * x - 1, 3) + 1) / 2) / 2; };
+  // relative volume: today's shares so far vs. what a normal day would have traded by now
+  const relVol = (vol, avg, minutes) => vol > 0 && avg > 0 ? vol / (avg * Math.max(volCurve(minutes / 390), volCurve(15 / 390))) : null;
   function sampleHistory() {
     const rnd = mulberry(20260925);
     const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(TAU * rnd());
@@ -232,17 +241,21 @@
       if (wd !== 0 && wd !== 6) dates.unshift(d.toISOString().slice(0, 10));
       d.setUTCDate(d.getUTCDate() - 1);
     }
-    const prices = [], values = [];
+    const prices = [], values = [], volumes = [];
     let p = BOOK.map(b => b[2]);
     for (let di = 0; di < dates.length; di++) {
+      let ret = BOOK.map(() => 0);
       if (di > 0) {
         const mkt = gauss() * .009 + .0004;
-        p = p.map((px, i) => px * (1 + BOOK[i][4] * mkt + gauss() * BOOK[i][3] * .8));
+        ret = BOOK.map((b, i) => b[4] * mkt + gauss() * b[3] * .8);
+        p = p.map((px, i) => px * (1 + ret[i]));
       }
       prices.push(p.slice());
       values.push(p.map((px, i) => px * BOOK[i][1]));
+      // busier on big-move days, plus day-to-day noise
+      volumes.push(BOOK.map((b, i) => b[5] * 1e6 * Math.exp(gauss() * .25) * (1 + 12 * Math.abs(ret[i]))));
     }
-    return { dates, tickers: BOOK.map(b => b[0]), prices, values, sample: true };
+    return { dates, tickers: BOOK.map(b => b[0]), prices, values, volumes, sample: true };
   }
 
   // ---------- CSV import (daily replay) ----------
@@ -252,7 +265,7 @@
     const head = lines[0].toLowerCase().split(',').map(s => s.trim().replace(/^"|"$/g, ''));
     const col = (...names) => head.findIndex(h => names.includes(h));
     const iD = col('date', 'day'), iT = col('ticker', 'symbol'),
-          iV = col('value', 'market_value', 'marketvalue'), iS = col('shares', 'quantity', 'qty'), iP = col('price', 'close');
+          iV = col('value', 'market_value', 'marketvalue'), iS = col('shares', 'quantity', 'qty'), iP = col('price', 'close'), iVol = col('volume', 'vol');
     if (iD < 0 || iT < 0 || (iV < 0 && (iS < 0 || iP < 0)))
       throw new Error('Columns not recognized. Use date,ticker,value or date,ticker,shares,price.');
     const byDate = new Map(), tset = new Set();
@@ -265,7 +278,7 @@
       const value = iV >= 0 ? num(c[iV]) : num(c[iS]) * price;
       if (!isFinite(value)) continue;
       if (!byDate.has(date)) byDate.set(date, new Map());
-      byDate.get(date).set(t, { value, price });
+      byDate.get(date).set(t, { value, price, volume: iVol >= 0 ? num(c[iVol]) : NaN });
       tset.add(t);
     }
     const dates = [...byDate.keys()].sort();
@@ -273,7 +286,8 @@
     const tickers = [...tset];
     const values = dates.map(d => tickers.map(t => byDate.get(d).get(t)?.value ?? 0));
     const prices = dates.map(d => tickers.map(t => byDate.get(d).get(t)?.price ?? NaN));
-    return { dates, tickers, prices, values, sample: false };
+    const volumes = iVol >= 0 ? dates.map(d => tickers.map(t => byDate.get(d).get(t)?.volume ?? NaN)) : null;
+    return { dates, tickers, prices, values, volumes, sample: false };
   }
 
   // Replay model: tickers ordered by average weight, per-day weights and % moves
@@ -292,7 +306,13 @@
       const v0 = values[d - 1][i];
       return v0 > 0 && v > 0 ? (v / v0 - 1) * 100 : 0;
     }));
-    M = { dates: raw.dates, tickers: pick(raw.tickers), values, pct, totals, sample: raw.sample,
+    // relative volume: each day's volume vs. the average of the previous VOL_LOOKBACK days
+    const vols = raw.volumes ? raw.volumes.map(pick) : null;
+    const rvol = vols ? vols.map((r, d) => r.map((v, i) => {
+      const past = vols.slice(Math.max(0, d - VOL_LOOKBACK), d).map(x => x[i]).filter(x => x > 0);
+      return past.length >= 3 && v > 0 ? v / (past.reduce((a, b) => a + b, 0) / past.length) : null;
+    })) : null;
+    M = { dates: raw.dates, tickers: pick(raw.tickers), values, pct, totals, sample: raw.sample, rvol,
           weights: values.map((r, d) => r.map(v => v / (totals[d] || 1))) };
   }
   function replayFrame(d) {
@@ -300,13 +320,14 @@
     const chg = d > 0 ? M.totals[d] - M.totals[d - 1] : 0;
     return {
       tickers: M.tickers, w: M.weights[d], pct: M.pct[d], val: M.values[d], total: M.totals[d],
+      rvol: M.rvol ? M.rvol[d] : M.tickers.map(() => null),
       chg, chgP: d > 0 ? chg / M.totals[d - 1] * 100 : 0, moved: d > 0,
       head: isNaN(dt) ? M.dates[d] : dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
       idle: d === 0 ? 'Start of range' : null, foot: `Day ${d + 1} of ${M.dates.length}`, asof: M.dates[d]
     };
   }
 
-  // Live model: holdings [{ticker, shares, price, prev_close}] -> frame
+  // Live model: holdings [{ticker, shares, price, prev_close, volume?, avg_volume?}] -> frame
   const L = { tickers: null, session: [], prevTotal: 0, open: false, asof: 0, source: null, poll: 0, sim: null, err: null };
   function liveFrame(h) {
     if (!L.tickers) L.tickers = h.slice().sort((a, b) => b.shares * b.price - a.shares * a.price).map(x => x.ticker);
@@ -317,9 +338,11 @@
     const pct = L.tickers.map(t => { const x = by.get(t); return x && x.prev_close > 0 ? (x.price / x.prev_close - 1) * 100 : 0; });
     const total = val.reduce((a, b) => a + b, 0), prevTotal = prev.reduce((a, b) => a + b, 0);
     L.prevTotal = prevTotal;
+    const minutes = L.sim ? L.sim.minute : L.open ? minutesSinceOpen(L.asof || Date.now()) : 390;
+    const rvol = L.tickers.map(t => { const x = by.get(t); return x ? relVol(x.volume, x.avg_volume, minutes) : null; });
     const tm = etClock(L.asof);
     return {
-      tickers: L.tickers, w: val.map(v => v / (total || 1)), pct, val, total,
+      tickers: L.tickers, w: val.map(v => v / (total || 1)), pct, val, total, rvol,
       chg: total - prevTotal, chgP: prevTotal ? (total / prevTotal - 1) * 100 : 0, moved: true,
       head: (L.sim ? 'Simulated · ' : L.open ? 'Live · ' : 'Market closed · ') + tm + ' ET',
       idle: null, foot: `${L.tickers.length} holdings · vs. previous close`, asof: L.open ? 'today' : 'last close'
@@ -377,6 +400,7 @@
       for (let i = 0; i < n; i++) { ang[i] = cum; cum += w[i] * TAU; }
     }
     return { w: w.slice(), sw, near, pct: pct.slice(), val: fr.val.slice(), total: fr.total, chg: fr.chg, chgP: fr.chgP,
+             rv: fr.rvol.map(v => v == null ? 1 : v),
              rot, ang, cl, mode, top: fr.moved && mode !== 'magnet' ? top : -1, best: fr.moved && pct[top] !== 0 ? top : -1 };
   }
 
@@ -418,7 +442,7 @@
     }
     S.to = tg;
     if (fresh || instant || reduced) {
-      S.cur = { ...tg, ang: tg.ang.slice(), sw: tg.sw.slice(), w: tg.w.slice(), pct: tg.pct.slice(), val: tg.val.slice(),
+      S.cur = { ...tg, ang: tg.ang.slice(), sw: tg.sw.slice(), w: tg.w.slice(), pct: tg.pct.slice(), val: tg.val.slice(), rv: tg.rv.slice(),
                 cl: tg.cl.slice(), kick: new Array(tg.ang.length).fill(0) };
       S.vel = { ang: new Array(tg.ang.length).fill(0), kick: new Array(tg.ang.length).fill(0) };
     }
@@ -452,7 +476,7 @@
       }
     }
     const lerpArr = k => cur[k].forEach((x, i) => { cur[k][i] = x + (to[k][i] - x) * ease; });
-    lerpArr('sw'); lerpArr('w'); lerpArr('pct'); lerpArr('val'); lerpArr('cl');
+    lerpArr('sw'); lerpArr('w'); lerpArr('pct'); lerpArr('val'); lerpArr('cl'); lerpArr('rv');
     for (const k of ['total', 'chg', 'chgP']) cur[k] += (to[k] - cur[k]) * ease;
     for (let i = 0; i < cur.ang.length; i++) {
       if (Math.abs(to.ang[i] - cur.ang[i]) > 1e-4 || Math.abs(v.ang[i]) > 1e-3 ||
@@ -496,6 +520,14 @@
 
     const n = st.w.length, gap = Math.min(.01, Math.PI / n / 6);
     const mids = st.ang.map((a0, i) => [a0, a0 + st.sw[i]]);
+    // slice thickness = relative volume. The outer edge stays put and the inner edge moves:
+    // normal volume (1x) is the usual thickness, marked by the dashed circle.
+    const hasVol = fr.rvol.some(v => v != null);
+    const inner = st.rv.map(v => rOut - (rOut - rIn) * Math.max(.35, Math.min(1.5, Math.sqrt(v))));
+    if (hasVol) {
+      rctx.save(); rctx.setLineDash([4, 3]); rctx.lineWidth = 1; rctx.strokeStyle = C.faint;
+      rctx.beginPath(); rctx.arc(cx, cy, rIn, 0, TAU); rctx.stroke(); rctx.restore();
+    }
     const drawOrder = [...Array(n).keys()].sort((x, y) => st.pct[x] - st.pct[y]);
     for (const i of drawOrder) {
       const [a0, a1] = mids[i];
@@ -505,7 +537,7 @@
       const s0 = a0 + gap / 2, s1 = Math.max(s0, a1 - gap / 2);
       const dir = p > .005 ? C.up : p < -.005 ? C.down : C.flat;
       // slice: neutral, tinted toward the day's direction
-      band(rIn, rOut, s0, s1);
+      band(inner[i], rOut, s0, s1);
       rctx.fillStyle = C.slice; rctx.fill();
       rctx.save();
       rctx.globalAlpha = hot ? .55 : .12 + mag * .38;
@@ -515,7 +547,7 @@
       // move bar
       if (Math.abs(p) > .005) {
         const Lb = Math.max(1.5, mag * bar), up = p > 0;
-        band(up ? rOut + 3 : rIn - 3 - Lb, up ? rOut + 3 + Lb : rIn - 3, s0, s1);
+        band(up ? rOut + 3 : inner[i] - 3 - Lb, up ? rOut + 3 + Lb : inner[i] - 3, s0, s1);
         rctx.fillStyle = dir; rctx.fill();
       }
     }
@@ -596,7 +628,8 @@
     rctx.fillText(fr.idle || `${chg >= 0 ? '+' : '−'}${money(Math.abs(chg))}  ${pctStr(st.chgP)}`, cx, cy + rIn * .2);
     rctx.fillStyle = C.muted; rctx.font = `400 ${font * .8}px ${MONO}`;
     const hi = S.hot >= 0 ? S.hot : st.top >= 0 ? st.top : S.to.best;
-    rctx.fillText(hi >= 0 ? `${fr.tickers[hi]} ${money(st.val[hi])} · ${(st.w[hi] * 100).toFixed(1)}% of acct` : fr.foot, cx, cy + rIn * .46);
+    const volNote = i => fr.rvol[i] != null ? ` · vol ${fr.rvol[i].toFixed(1)}×` : '';
+    rctx.fillText(hi >= 0 ? `${fr.tickers[hi]} ${money(st.val[hi])} · ${(st.w[hi] * 100).toFixed(1)}%${volNote(hi)}` : fr.foot, cx, cy + rIn * .46);
   }
 
   function hitTest(ev) {
@@ -630,11 +663,12 @@
     const maxAbs = Math.max(BAR_SCALE * .4, ...idx.map(i => Math.abs(fr.pct[i])));
     rows.innerHTML = idx.map(i => {
       const p = fr.pct[i], cls = p > .005 ? 'up' : p < -.005 ? 'dn' : 'flat';
-      const w = Math.round(Math.abs(p) / maxAbs * 36);
+      const w = Math.round(Math.abs(p) / maxAbs * 22);
       return `<tr class="row${S.hot === i ? ' hot' : ''}" data-i="${i}">
         <td><span class="tk ${cls}">${fr.tickers[i]}</span></td>
         <td>${money(fr.val[i])}</td>
         <td>${(fr.w[i] * 100).toFixed(1)}%</td>
+        <td class="vol${fr.rvol[i] >= 1.5 ? ' hi' : ''}">${fr.rvol[i] != null ? fr.rvol[i].toFixed(1) + '×' : '—'}</td>
         <td class="${cls}"><span class="mbar" style="width:${w}px;background:currentColor"></span>${pctStr(p)}</td></tr>`;
     }).join('');
     $('asof').textContent = fr.asof;
@@ -771,13 +805,22 @@
     const hist = sampleHistory(), last = hist.prices[hist.prices.length - 1];
     const rnd = mulberry(Date.now() & 0xffff);
     const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(TAU * rnd());
-    const sim = L.sim = { minute: 0, prev: last.slice(), px: last.slice(), closedFor: 0 };
+    // each holding gets a "how busy is it today" factor; heavier trading also follows bigger moves
+    const newDay = () => BOOK.map(() => Math.exp(gauss() * .45));
+    const sim = L.sim = { minute: 0, prev: last.slice(), px: last.slice(), closedFor: 0, vol: BOOK.map(() => 0), busy: newDay() };
     const minuteStep = () => {
       const mkt = gauss() * .009 / Math.sqrt(390);
-      sim.px = sim.px.map((p, i) => p * (1 + BOOK[i][4] * mkt + gauss() * BOOK[i][3] * .8 / Math.sqrt(390)));
+      const x0 = volCurve(sim.minute / 390), x1 = volCurve((sim.minute + 1) / 390);
+      sim.px = sim.px.map((p, i) => {
+        const r = BOOK[i][4] * mkt + gauss() * BOOK[i][3] * .8 / Math.sqrt(390);
+        sim.vol[i] += BOOK[i][5] * 1e6 * (x1 - x0) * sim.busy[i] * Math.exp(gauss() * .3) * (1 + 150 * Math.abs(r));
+        return p * (1 + r);
+      });
       sim.minute++;
     };
-    const holdings = () => BOOK.map((b, i) => ({ ticker: b[0], shares: b[1], price: sim.px[i], prev_close: sim.prev[i] }));
+    const holdings = () => BOOK.map((b, i) => ({ ticker: b[0], shares: b[1], price: sim.px[i], prev_close: sim.prev[i],
+                                                 volume: sim.vol[i], avg_volume: b[5] * 1e6 }));
+    L.simHoldings = holdings;
     const stamp = () => Date.UTC(2026, 8, 28, 13, 30) + sim.minute * 60000; // 9:30 ET = 13:30 UTC
     const record = () => L.session.push([sim.minute, holdings().reduce((a, x) => a + x.shares * x.price, 0)]);
     L.session = []; record();
@@ -785,7 +828,7 @@
     const tick = () => {
       if (sim.minute >= 390) {
         L.open = false;
-        if (++sim.closedFor > 6) { sim.prev = sim.px.slice(); sim.minute = 0; sim.closedFor = 0; L.session = []; record(); }
+        if (++sim.closedFor > 6) { sim.prev = sim.px.slice(); sim.minute = 0; sim.closedFor = 0; sim.vol = BOOK.map(() => 0); sim.busy = newDay(); L.session = []; record(); }
       } else { L.open = true; minuteStep(); record(); }
       L.asof = stamp();
       if (S.mode === 'live') setFrame(liveFrame(holdings()));
@@ -822,7 +865,7 @@
     liveStatus();
     srcChip();
     if (mode === 'replay') { scrub.max = M.dates.length - 1; goTo(0, true); if (!reduced) play(); }
-    else if (L.sim) setFrame(liveFrame(BOOK.map((b, i) => ({ ticker: b[0], shares: b[1], price: L.sim.px[i], prev_close: L.sim.prev[i] }))), true);
+    else if (L.sim) setFrame(liveFrame(L.simHoldings()), true);
     else if (L.source?.holdings?.length) setFrame(liveFrame(L.source.holdings), true);
   }
   function srcChip() {
