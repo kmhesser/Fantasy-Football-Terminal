@@ -203,7 +203,8 @@ filled in and that you're a member of that league.
 
 `brokerage_ring.html` shows a brokerage account as a ring. Each holding is a slice
 sized by its share of the account, with its ticker in a pill around the outside:
-green when the stock is up from yesterday's close, red when it's down. A legend
+green when the stock is up from yesterday's close, red when it's down, with a
+paler shade for a small move and a deeper one for a big move. A legend
 under the ring explains each mark.
 
 - **Order:** tickers run clockwise from the lowest move to the highest. Gainers

@@ -18,6 +18,9 @@
     --accent: #2743c4;
     --up: #0f8a5f;
     --down: #c8413b;
+    /* shade ramps for the size of a move: small -> medium (= --up/--down) -> big */
+    --up-lo: #b9e4cf; --up-hi: #06402a;
+    --down-lo: #f2c4c0; --down-hi: #6e1814;
     --flat: #8a6d1f;
     --display: 'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif;
     --sans: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
@@ -28,12 +31,14 @@
       color-scheme: dark;
       --bg: #0f141a; --surface: #161d26; --ink: #e6ebf0; --muted: #8a98a8; --faint: #5a6878;
       --rule: #263140; --slice: #1e2733; --accent: #8098ff; --up: #3ccb8f; --down: #ff6b61; --flat: #d9b44a;
+      --up-lo: #1f4a38; --up-hi: #b4f5d6; --down-lo: #5a2522; --down-hi: #ffc4bd;
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
     --bg: #0f141a; --surface: #161d26; --ink: #e6ebf0; --muted: #8a98a8; --faint: #5a6878;
     --rule: #263140; --slice: #1e2733; --accent: #8098ff; --up: #3ccb8f; --down: #ff6b61; --flat: #d9b44a;
+      --up-lo: #1f4a38; --up-hi: #b4f5d6; --down-lo: #5a2522; --down-hi: #ffc4bd;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   [hidden] { display: none !important; }
@@ -114,8 +119,6 @@
   tr.row { cursor: pointer; }
   tr.row:hover, tr.row.hot { background: color-mix(in srgb, var(--accent) 9%, transparent); }
   .tk { display: inline-block; font: 500 12px var(--mono); padding: 1px 8px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); }
-  .tk.up { background: var(--up); border-color: var(--up); color: var(--surface); }
-  .tk.dn { background: var(--down); border-color: var(--down); color: var(--surface); }
   tr.row.hot .tk, tr.row:hover .tk { outline: 2px solid var(--accent); outline-offset: 1px; }
   .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; font-size: 12px; color: var(--muted); }
   .legend > span { display: inline-flex; align-items: center; gap: 6px; }
@@ -125,6 +128,8 @@
               clip-path: polygon(0 60%, 45% 60%, 45% 0, 100% 0, 100% 100%, 0 100%); border-bottom: 1px dashed var(--faint); }
   .sw-bar { width: 12px; height: 10px; background: linear-gradient(to right, var(--up) 0 45%, transparent 45% 55%, var(--down) 55%); }
   .sw-gap { width: 18px; height: 10px; background: linear-gradient(to right, var(--down) 0 30%, transparent 30% 70%, var(--up) 70%); border-top: 2px solid var(--up); }
+  .sw-shade { width: 28px; height: 10px; border-radius: 2px;
+              background: linear-gradient(to right, var(--down-hi), var(--down), var(--down-lo) 45%, var(--up-lo) 55%, var(--up), var(--up-hi)); }
   .sw-ext { width: 18px; height: 10px; border: 1px dashed var(--ink); border-radius: 999px; opacity: .75; }
   .other-note { padding: 8px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); }
   .other-note button, #backLive { font-size: 12px; padding: 2px 8px; margin-left: 4px; }
@@ -157,6 +162,7 @@
         <span><i class="sw sw-slice"></i>Slice: share of the account</span>
         <span id="lgThick"><i class="sw sw-thick"></i>Thickness: volume vs. normal (dashed circle = 1×)</span>
         <span><i class="sw sw-bar"></i><span id="lgBar">Bar: % move today, out when up, in when down</span></span>
+        <span><i class="sw sw-shade"></i>Shade: deeper = bigger move</span>
         <span id="lgGap"><i class="sw sw-gap"></i>Gap: splits gainers (green arc) from losers</span>
         <span id="lgExt" hidden><i class="sw sw-ext"></i>Dashed pill: pre/after-hours price</span>
       </div>
@@ -224,7 +230,22 @@
     const cs = getComputedStyle(document.documentElement);
     const v = k => cs.getPropertyValue('--' + k).trim();
     C = { ink: v('ink'), muted: v('muted'), faint: v('faint'), rule: v('rule'), slice: v('slice'),
-          surface: v('surface'), bgc: v('bg'), accent: v('accent'), up: v('up'), down: v('down'), flat: v('flat') };
+          surface: v('surface'), bgc: v('bg'), accent: v('accent'), up: v('up'), down: v('down'), flat: v('flat'),
+          upLo: v('up-lo'), upHi: v('up-hi'), downLo: v('down-lo'), downHi: v('down-hi') };
+  }
+  // Shade for a move: a pale tint for small moves through the base green/red to a deep shade
+  // (vivid in dark mode) for big ones. t is the move as a share of a full bar (0..1).
+  const rgb = hex => { const n = parseInt(hex.replace('#', ''), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+  const mixHex = (a, b, t) => { const A = rgb(a), B = rgb(b); return `rgb(${A.map((x, i) => Math.round(x + (B[i] - x) * t)).join(',')})`; };
+  function shade(up, t) {
+    t = Math.sqrt(Math.max(0, Math.min(1, t))); // small moves still get a visible tint
+    const [lo, mid, hi] = up ? [C.upLo, C.up, C.upHi] : [C.downLo, C.down, C.downHi];
+    return t < .5 ? mixHex(lo, mid, t / .5) : mixHex(mid, hi, (t - .5) / .5);
+  }
+  // readable text on a shaded fill: dark on light fills, white on dark ones
+  function textOn(fill) {
+    const [r, g, b] = fill.match(/\d+/g).map(Number).map(v => { v /= 255; return v <= .04045 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); });
+    return .2126 * r + .7152 * g + .0722 * b > .3 ? '#10161d' : '#ffffff';
   }
   const MONO = "'IBM Plex Mono', ui-monospace, Menlo, monospace";
   const DISPLAY = "'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif";
@@ -673,6 +694,7 @@
       const hot = hotI === i, top = st.top === i;
       const s0 = a0 + gap / 2, s1 = Math.max(s0, a1 - gap / 2);
       const dir = fr.cash[i] ? C.faint : p > .005 ? C.up : p < -.005 ? C.down : C.flat;
+      const barC = Math.abs(p) > .005 ? shade(p > 0, mag) : dir;
       rctx.save();
       if (fr.ext[i]) rctx.globalAlpha = .6; // extended-hours prices: dimmed
       band(inner[i], rOut, s0, s1);
@@ -688,7 +710,7 @@
       if (!fr.cash[i] && Math.abs(p) > .005) {
         const Lb = Math.max(1.5, mag * bar), up = p > 0;
         band(up ? rOut + 3 : inner[i] - 3 - Lb, up ? rOut + 3 + Lb : inner[i] - 3, s0, s1);
-        rctx.fillStyle = dir; rctx.fill();
+        rctx.fillStyle = barC; rctx.fill();
       }
       rctx.restore();
     }
@@ -747,7 +769,8 @@
       const pw = cash ? 0 : Math.max(rctx.measureText(ps).width, rctx.measureText(usd ? '+$0.0k' : '+0.00%').width);
       const pillX = left ? -(pw + (cash ? 0 : gapX) + pillW) : pw + (cash ? 0 : gapX);
       // pill: green when up on the day, red when down, neutral when flat or cash
-      const dirC = cash ? null : p > .005 ? C.up : p < -.005 ? C.down : null;
+      // pill: shaded green when up, red when down (paler = smaller move), neutral when flat or cash
+      const dirC = cash || Math.abs(p) <= .005 ? null : shade(p > 0, Math.abs(st.m[i]) / fr.scale);
       const pulse = pulseFor(fr, i);
       if (pulse) { // expanding ring that fades out
         const k = (now - pulse.t) / PULSE_MS, o = 2 + k * font * 1.4;
@@ -771,7 +794,7 @@
       if (fr.ext[i]) { rctx.setLineDash([3, 2]); rctx.strokeStyle = C.ink; }
       rctx.stroke(); rctx.setLineDash([]);
       rctx.textAlign = 'center'; rctx.font = tkFont;
-      rctx.fillStyle = dirC ? C.surface : C.ink;
+      rctx.fillStyle = dirC ? textOn(dirC) : C.ink;
       rctx.fillText(tk, pillX + pillW / 2, 1);
       if (!cash) {
         rctx.textAlign = left ? 'right' : 'left'; rctx.font = pFont; // anchored at the ring side
@@ -870,6 +893,11 @@
   });
 
   // ---------- movers table ----------
+  function pillStyle(x, scale) {
+    if (x.cash || Math.abs(x.pct) <= .005) return '';
+    const f = shade(x.pct > 0, Math.abs(x.m) / scale);
+    return ` style="background:${f};border-color:${f};color:${textOn(f)}"`;
+  }
   const rows = $('rows');
   function renderTable() {
     const fr = S.frame, usd = fr.measure === 'usd';
@@ -883,7 +911,7 @@
       const flash = S.pulses[x.key] && now - S.pulses[x.key].t < PULSE_MS ? ' flash' : '';
       const grouped = fr.members.some(g => g && g.includes(x.key)) ? ' grouped' : '';
       return `<tr class="row${S.hot === x.key ? ' hot' : ''}${flash}${grouped}" data-k="${x.key}">
-        <td><span class="tk ${x.cash ? '' : cls}${x.ext ? ' ext' : ''}">${x.key}</span></td>
+        <td><span class="tk${x.ext ? ' ext' : ''}"${pillStyle(x, fr.scale)}>${x.key}</span></td>
         <td>${money(x.val)}</td>
         <td>${(x.w * 100).toFixed(1)}%</td>
         <td class="vol${x.rvol >= 1.5 ? ' hi' : ''}">${x.rvol != null ? x.rvol.toFixed(1) + '×' : '—'}</td>
