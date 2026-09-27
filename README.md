@@ -201,7 +201,7 @@ filled in and that you're a member of that league.
 
 ## Brokerage Ring (side project)
 
-`brokerage_ring.html` is a standalone page in the same CRT style that replays a
+`brokerage_ring.html` is a standalone page that replays a
 brokerage account day by day. Each holding is a slice of a ring sized by its share
 of the account, with its ticker written around the outside. A bar on each slice
 shows that day's move: outward and green when up, inward and red when down. The

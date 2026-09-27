@@ -4,114 +4,115 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Brokerage Ring</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
 <style>
   :root {
+    color-scheme: light;
+    --bg: #eef1f4;
+    --surface: #ffffff;
+    --ink: #16202c;
+    --muted: #5b6b7c;
+    --faint: #93a1b0;
+    --rule: #d5dce3;
+    --slice: #e3e8ee;
+    --accent: #2743c4;
+    --up: #0f8a5f;
+    --down: #c8413b;
+    --flat: #8a6d1f;
+    --display: 'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif;
+    --sans: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f141a; --surface: #161d26; --ink: #e6ebf0; --muted: #8a98a8; --faint: #5a6878;
+      --rule: #263140; --slice: #1e2733; --accent: #8098ff; --up: #3ccb8f; --down: #ff6b61; --flat: #d9b44a;
+    }
+  }
+  :root[data-theme="dark"] {
     color-scheme: dark;
-    --green: #00ff41;
-    --green-dim: #00aa2a;
-    --green-dark: #003b0f;
-    --green-glow: #00ff4180;
-    --amber: #ffb000;
-    --red: #ff3c3c;
-    --red-dark: #3b0a0a;
-    --bg: #0a0f0a;
-    --panel: #0d140d;
-    --line: #1a3a1f;
-    --scanline: rgba(0,0,0,0.15);
+    --bg: #0f141a; --surface: #161d26; --ink: #e6ebf0; --muted: #8a98a8; --faint: #5a6878;
+    --rule: #263140; --slice: #1e2733; --accent: #8098ff; --up: #3ccb8f; --down: #ff6b61; --flat: #d9b44a;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { background: var(--bg); }
   body {
-    color: var(--green);
-    font-family: 'Share Tech Mono', 'Courier New', monospace;
-    font-size: 13px;
-    min-height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
     overflow-x: hidden;
     padding-inline: 16px;
-    padding-block: 16px 32px;
+    padding-block: 20px 40px;
   }
-  body::before {
-    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 50;
-    background: repeating-linear-gradient(0deg, var(--scanline) 0 1px, transparent 1px 3px);
-  }
-  body::after {
-    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 49;
-    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.55) 100%);
-  }
-  .wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 
-  header {
-    display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px;
-    border-bottom: 1px solid var(--line); padding-bottom: 8px;
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+  h1 { font-family: var(--display); font-weight: 650; font-size: 28px; letter-spacing: -0.01em; line-height: 1.1; text-wrap: balance; }
+  .src {
+    font-size: 12px; color: var(--muted); border: 1px solid var(--rule); background: var(--surface);
+    border-radius: 999px; padding: 3px 12px;
   }
-  h1 {
-    font-family: 'VT323', 'Share Tech Mono', monospace; font-weight: normal;
-    font-size: 34px; letter-spacing: 3px; line-height: 1;
-    text-shadow: 0 0 8px var(--green-glow);
-  }
-  h1 .cursor { animation: blink 1s steps(1) infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
-  .src { color: var(--green-dim); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
-  .src b { color: var(--amber); font-weight: normal; }
+  .src b { color: var(--ink); font-weight: 500; }
 
-  .main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px; align-items: start; }
   @media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
 
-  .stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-  .ring-box { position: relative; width: 100%; max-width: 680px; margin: 0 auto; aspect-ratio: 1 / 1; }
+  .stage { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .ring-box { position: relative; width: 100%; max-width: 660px; margin: 0 auto; aspect-ratio: 1 / 1; }
   #ring { width: 100%; height: 100%; display: block; cursor: crosshair; touch-action: manipulation; }
 
   .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   button, select, .filebtn {
-    font: inherit; color: var(--green); background: var(--panel);
-    border: 1px solid var(--green-dim); padding: 6px 10px; cursor: pointer;
-    letter-spacing: 1px; text-transform: uppercase; font-size: 12px;
+    font: 500 13px var(--sans); color: var(--ink); background: var(--surface);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 6px 12px; cursor: pointer;
   }
-  button:hover, select:hover, .filebtn:hover { background: var(--green-dark); }
-  button:focus-visible, select:focus-visible, input:focus-visible + .filebtn, input[type=range]:focus-visible {
-    outline: 1px solid var(--amber); outline-offset: 2px;
+  button:hover, select:hover, .filebtn:hover { border-color: var(--muted); }
+  button:focus-visible, select:focus-visible, input:focus-visible + .filebtn, input[type=range]:focus-visible, input[type=checkbox]:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
   }
-  #play { min-width: 84px; color: var(--bg); background: var(--green); border-color: var(--green); }
-  #play:hover { background: var(--green-dim); }
-  label.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--green-dim); cursor: pointer; }
-  label.chk input { accent-color: var(--green); }
+  #play { min-width: 86px; color: var(--surface); background: var(--accent); border-color: var(--accent); }
+  #play:hover { filter: brightness(1.08); }
+  label.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+  label.chk input { accent-color: var(--accent); }
   .spacer { flex: 1; }
   #csv { position: absolute; width: 1px; height: 1px; opacity: 0; }
 
   .tape { display: flex; flex-direction: column; gap: 4px; }
-  #spark { width: 100%; height: 56px; display: block; cursor: pointer; }
-  #scrub { width: 100%; accent-color: var(--green); }
-  .tape-legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--green-dim); font-variant-numeric: tabular-nums; }
+  #spark { width: 100%; height: 60px; display: block; cursor: pointer; }
+  #scrub { width: 100%; accent-color: var(--accent); }
+  .tape-legend { display: flex; justify-content: space-between; font: 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 
-  aside { border: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-width: 0; }
+  aside { border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
   aside h2 {
-    font-family: 'VT323', monospace; font-weight: normal; font-size: 20px; letter-spacing: 2px;
-    padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--display); font-weight: 500; font-size: 17px;
+    padding: 12px 14px 10px; display: flex; justify-content: space-between; align-items: baseline;
   }
-  aside h2 span { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--green-dim); letter-spacing: 1px; }
+  aside h2 span { font: 12px var(--mono); color: var(--muted); }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  th { font-weight: normal; font-size: 10px; letter-spacing: 1px; color: var(--green-dim); text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { font: 500 11px var(--sans); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); text-align: right; padding: 6px 12px; border-block: 1px solid var(--rule); }
   th:first-child { text-align: left; }
-  td { padding: 4px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid #0f1f11; }
-  td:first-child { text-align: left; }
+  td { font: 13px var(--mono); padding: 5px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { text-align: left; font-weight: 600; }
   tr.row { cursor: pointer; }
-  tr.row:hover, tr.row.hot { background: var(--green-dark); }
-  .up { color: var(--green); }
-  .dn { color: var(--red); }
-  .flat { color: var(--amber); }
-  .mbar { display: inline-block; height: 7px; vertical-align: middle; margin-right: 6px; }
-  .notes { padding: 10px 12px; font-size: 11px; color: var(--green-dim); line-height: 1.6; border-top: 1px solid var(--line); }
-  .notes b { color: var(--green); font-weight: normal; }
-  .err { color: var(--red); }
-  @media (prefers-reduced-motion: reduce) { h1 .cursor { animation: none; } }
+  tr.row:hover, tr.row.hot { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  .up { color: var(--up); }
+  .dn { color: var(--down); }
+  .flat { color: var(--flat); }
+  .mbar { display: inline-block; height: 6px; border-radius: 1px; vertical-align: middle; margin-right: 8px; }
+  .notes { padding: 12px 14px; font-size: 12.5px; color: var(--muted); line-height: 1.6; border-top: 1px solid var(--rule); display: flex; flex-direction: column; gap: 6px; }
+  .notes b { color: var(--ink); font-weight: 500; }
+  .notes code { font: 12px var(--mono); color: var(--ink); }
+  .err { color: var(--down); }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1>BROKERAGE RING<span class="cursor">_</span></h1>
-    <div class="src" id="src">SOURCE: <b>SAMPLE PORTFOLIO</b> · NOT YOUR DATA</div>
+    <h1>Brokerage Ring</h1>
+    <div class="src" id="src"><b>Sample portfolio</b> · not your data</div>
   </header>
 
   <div class="main">
@@ -119,16 +120,16 @@
       <div class="ring-box"><canvas id="ring" aria-label="Portfolio ring: each holding is a slice sized by its weight, with its ticker around the edge and a bar showing its daily move"></canvas></div>
 
       <div class="controls">
-        <button id="prev" title="Previous day (←)">◀ Day</button>
-        <button id="play" title="Play / pause (space)">▶ Play</button>
-        <button id="next" title="Next day (→)">Day ▶</button>
+        <button id="prev" title="Previous day (←)">← Day</button>
+        <button id="play" title="Play / pause (space)">Play</button>
+        <button id="next" title="Next day (→)">Day →</button>
         <select id="speed" aria-label="Playback speed">
           <option value="1400">0.5×</option>
           <option value="700" selected>1×</option>
           <option value="350">2×</option>
           <option value="160">4×</option>
         </select>
-        <label class="chk"><input type="checkbox" id="spot" checked> Spin top mover to 12:00</label>
+        <label class="chk"><input type="checkbox" id="spot" checked> Turn top mover to 12 o’clock</label>
         <span class="spacer"></span>
         <input type="file" id="csv" accept=".csv,text/csv">
         <label for="csv" class="filebtn" title="CSV with columns: date,ticker,value  or  date,ticker,shares,price">Load CSV</label>
@@ -142,14 +143,14 @@
     </section>
 
     <aside>
-      <h2>MOVERS <span id="asof"></span></h2>
+      <h2>Movers <span id="asof"></span></h2>
       <table>
-        <thead><tr><th>TICKER</th><th>VALUE</th><th>WT</th><th>DAY</th></tr></thead>
+        <thead><tr><th>Ticker</th><th>Value</th><th>Wt</th><th>Day</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="notes" id="notes">
-        <b>Slice</b> = share of account. <b>Bar</b> = the day's move: outward and green when up, inward and red when down. The dotted rings mark ±2.5% and ±5%.<br>
-        <b>Load CSV</b> with a header row: <b>date,ticker,value</b> or <b>date,ticker,shares,price</b>. One row per holding per day. The file stays in your browser.
+        <p><b>Slice</b> is the holding's share of the account. <b>Bar</b> is the day's move: outward when up, inward when down. Dotted rings mark ±2.5% and ±5%.</p>
+        <p><b>Load CSV</b> with a header row of <code>date,ticker,value</code> or <code>date,ticker,shares,price</code>, one row per holding per day. The file stays in your browser.</p>
       </div>
     </aside>
   </div>
@@ -157,10 +158,15 @@
 
 <script>
 (() => {
-  const C = {
-    green: '#00ff41', dim: '#00aa2a', dark: '#003b0f', amber: '#ffb000',
-    red: '#ff3c3c', redDark: '#3b0a0a', bg: '#0a0f0a', line: '#1a3a1f'
-  };
+  let C = {};
+  function readTokens() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = k => cs.getPropertyValue('--' + k).trim();
+    C = { ink: v('ink'), muted: v('muted'), faint: v('faint'), rule: v('rule'), slice: v('slice'),
+          surface: v('surface'), bgc: v('bg'), accent: v('accent'), up: v('up'), down: v('down'), flat: v('flat') };
+  }
+  const MONO = "'IBM Plex Mono', ui-monospace, Menlo, monospace";
+  const DISPLAY = "'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif";
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const BAR_SCALE = 5; // % move that fills the full bar length
 
@@ -347,7 +353,7 @@
 
     // guides: ±2.5% and ±5%
     rctx.save();
-    rctx.setLineDash([1, 4]); rctx.lineWidth = 1; rctx.strokeStyle = C.line;
+    rctx.setLineDash([1, 4]); rctx.lineWidth = 1; rctx.strokeStyle = C.rule;
     for (const k of [.5, 1]) {
       for (const r of [rOut + 2 + bar * k, rIn - 2 - bar * k]) {
         rctx.beginPath(); rctx.arc(cx, cy, r, 0, Math.PI * 2); rctx.stroke();
@@ -355,7 +361,7 @@
     }
     rctx.restore();
 
-    const n = st.w.length, gap = Math.min(.012, Math.PI / n / 6);
+    const n = st.w.length, gap = Math.min(.01, Math.PI / n / 6);
     let cum = 0;
     const mids = [];
     for (let i = 0; i < n; i++) {
@@ -367,29 +373,33 @@
       const p = st.pct[i], mag = Math.min(1, Math.abs(p) / BAR_SCALE);
       const hot = S.hot === i, top = st.top === i;
       const s0 = a0 + gap / 2, s1 = Math.max(s0, a1 - gap / 2);
+      const dir = p > .005 ? C.up : p < -.005 ? C.down : C.flat;
 
-      // slice
+      // slice: neutral, tinted toward the day's direction
       band(rIn, rOut, s0, s1);
-      const base = p >= 0 ? mix(C.dark, C.green, .12 + mag * .55) : mix(C.redDark, C.red, .12 + mag * .55);
-      rctx.fillStyle = hot ? (p >= 0 ? C.dim : '#b02a2a') : base;
-      rctx.fill();
-      rctx.lineWidth = hot || top ? 1.5 : 1;
-      rctx.strokeStyle = hot ? C.amber : top ? C.amber : (p >= 0 ? C.dim : '#7a1d1d');
-      rctx.stroke();
+      rctx.fillStyle = C.slice; rctx.fill();
+      rctx.save();
+      rctx.globalAlpha = hot ? .55 : .12 + mag * .38;
+      rctx.fillStyle = dir; rctx.fill();
+      rctx.restore();
+      if (hot || top) { rctx.lineWidth = 2; rctx.strokeStyle = C.accent; rctx.stroke(); }
 
       // move bar
-      const L = Math.max(1.5, mag * bar);
       if (Math.abs(p) > .005) {
-        const up = p > 0;
-        band(up ? rOut + 2 : rIn - 2 - L, up ? rOut + 2 + L : rIn - 2, s0, s1);
-        rctx.save();
-        rctx.fillStyle = up ? C.green : C.red;
-        rctx.shadowColor = up ? C.green : C.red;
-        rctx.shadowBlur = 6 + mag * 10;
-        rctx.globalAlpha = hot ? 1 : .85;
-        rctx.fill();
-        rctx.restore();
+        const L = Math.max(1.5, mag * bar), up = p > 0;
+        band(up ? rOut + 3 : rIn - 3 - L, up ? rOut + 3 + L : rIn - 3, s0, s1);
+        rctx.fillStyle = dir; rctx.fill();
       }
+    }
+
+    // bezel ticks at each slice boundary, just inside the labels
+    rctx.strokeStyle = C.faint; rctx.lineWidth = 1;
+    for (const [a0] of mids) {
+      const r0 = rLab - s * .012, r1 = rLab - s * .004;
+      rctx.beginPath();
+      rctx.moveTo(cx + Math.cos(a0) * r0, cy + Math.sin(a0) * r0);
+      rctx.lineTo(cx + Math.cos(a0) * r1, cy + Math.sin(a0) * r1);
+      rctx.stroke();
     }
 
     // labels: radial, flipped on the left half so they read left-to-right
@@ -406,19 +416,18 @@
       rctx.translate(cx + c * rLab, cy + sn * rLab);
       rctx.rotate(left ? mid + Math.PI : mid);
       rctx.textAlign = left ? 'right' : 'left';
-      const tk = M.tickers[i], ps = ' ' + pctStr(p);
-      rctx.font = `${hot || top ? 'bold ' : ''}${font}px 'Share Tech Mono', monospace`;
+      const tk = M.tickers[i], ps = '  ' + pctStr(p);
+      const tkFont = `${hot || top ? 600 : 500} ${font}px ${MONO}`, pFont = `400 ${font * .82}px ${MONO}`;
+      rctx.font = tkFont;
       const tw = rctx.measureText(tk).width;
-      rctx.font = `${font * .8}px 'Share Tech Mono', monospace`;
+      rctx.font = pFont;
       const pw = rctx.measureText(ps).width;
-      // reads "TICKER +x.xx%" left-to-right on both halves
-      rctx.font = `${hot || top ? 'bold ' : ''}${font}px 'Share Tech Mono', monospace`;
-      rctx.fillStyle = hot || top ? C.amber : C.green;
-      if (hot || top) { rctx.shadowColor = C.amber; rctx.shadowBlur = 8; }
+      // reads "TICKER  +x.xx%" left-to-right on both halves
+      rctx.font = tkFont;
+      rctx.fillStyle = hot || top ? C.accent : C.ink;
       rctx.fillText(tk, left ? -pw : 0, 0);
-      rctx.shadowBlur = 0;
-      rctx.font = `${font * .8}px 'Share Tech Mono', monospace`;
-      rctx.fillStyle = p > .005 ? C.dim : p < -.005 ? C.red : C.amber;
+      rctx.font = pFont;
+      rctx.fillStyle = p > .005 ? C.up : p < -.005 ? C.down : C.flat;
       rctx.fillText(ps, left ? 0 : tw, 1);
       rctx.restore();
     }
@@ -427,26 +436,25 @@
     const d = S.day, chg = d > 0 ? M.totals[d] - M.totals[d - 1] : 0;
     const chgP = d > 0 ? chg / M.totals[d - 1] * 100 : 0;
     rctx.textAlign = 'center';
-    rctx.fillStyle = C.dim;
-    rctx.font = `${font * .85}px 'Share Tech Mono', monospace`;
+    rctx.textBaseline = 'middle';
+    rctx.fillStyle = C.muted;
+    rctx.font = `500 ${font * .9}px ${MONO}`;
     const dt = new Date(M.dates[d] + 'T12:00:00Z');
     const dlabel = isNaN(dt) ? M.dates[d] :
-      dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).toUpperCase();
-    rctx.fillText(dlabel, cx, cy - rIn * .42);
-    rctx.fillStyle = C.green;
-    rctx.shadowColor = C.green; rctx.shadowBlur = 10;
-    rctx.font = `${s * .066}px 'VT323', monospace`;
-    rctx.fillText(money(st.total), cx, cy - rIn * .08);
-    rctx.shadowBlur = 0;
-    rctx.font = `${font * 1.05}px 'Share Tech Mono', monospace`;
-    rctx.fillStyle = chg > 0 ? C.green : chg < 0 ? C.red : C.amber;
-    rctx.fillText(d === 0 ? 'START OF RANGE' : `${chg >= 0 ? '+' : '−'}${money(Math.abs(chg))}  ${pctStr(chgP)}`, cx, cy + rIn * .22);
-    rctx.fillStyle = C.dim;
-    rctx.font = `${font * .75}px 'Share Tech Mono', monospace`;
+      dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+    rctx.fillText(dlabel, cx, cy - rIn * .44);
+    rctx.fillStyle = C.ink;
+    rctx.font = `650 ${s * .058}px ${DISPLAY}`;
+    rctx.fillText(money(st.total), cx, cy - rIn * .1);
+    rctx.font = `500 ${font * 1.05}px ${MONO}`;
+    rctx.fillStyle = chg > 0 ? C.up : chg < 0 ? C.down : C.muted;
+    rctx.fillText(d === 0 ? 'Start of range' : `${chg >= 0 ? '+' : '\u2212'}${money(Math.abs(chg))}  ${pctStr(chgP)}`, cx, cy + rIn * .2);
+    rctx.fillStyle = C.muted;
+    rctx.font = `400 ${font * .8}px ${MONO}`;
     const hi = S.hot >= 0 ? S.hot : st.top;
     const foot = hi >= 0
-      ? `${M.tickers[hi]} ${money(st.val[hi])} · ${(st.w[hi] * 100).toFixed(1)}% OF ACCT`
-      : `DAY ${d + 1} OF ${M.dates.length}`;
+      ? `${M.tickers[hi]} ${money(st.val[hi])} \u00b7 ${(st.w[hi] * 100).toFixed(1)}% of acct`
+      : `Day ${d + 1} of ${M.dates.length}`;
     rctx.fillText(foot, cx, cy + rIn * .46);
   }
 
@@ -490,7 +498,7 @@
         <td class="${cls}"><span class="mbar" style="width:${w}px;background:currentColor"></span>${pctStr(p)}</td></tr>`;
     }).join('');
     document.getElementById('asof').textContent = M.dates[d];
-    document.getElementById('dcur').textContent = `DAY ${d + 1}/${M.dates.length}`;
+    document.getElementById('dcur').textContent = `Day ${d + 1} of ${M.dates.length}`;
   }
   rows.addEventListener('mouseover', e => { const tr = e.target.closest('tr.row'); if (tr) setHot(+tr.dataset.i); });
   rows.addEventListener('mouseleave', () => setHot(-1));
@@ -506,28 +514,33 @@
     const T = M.totals, lo = Math.min(...T), hi = Math.max(...T), pad = 4;
     const X = i => pad + i / (T.length - 1) * (w - pad * 2);
     const Y = v => h - pad - (v - lo) / (hi - lo || 1) * (h - pad * 2);
-    sctx.strokeStyle = C.line; sctx.lineWidth = 1;
+    sctx.strokeStyle = C.rule; sctx.lineWidth = 1;
     for (let k = 0; k <= 2; k++) { const y = pad + k * (h - pad * 2) / 2; sctx.beginPath(); sctx.moveTo(0, y); sctx.lineTo(w, y); sctx.stroke(); }
     sctx.beginPath();
     T.forEach((v, i) => i ? sctx.lineTo(X(i), Y(v)) : sctx.moveTo(X(i), Y(v)));
     sctx.lineTo(X(T.length - 1), h); sctx.lineTo(X(0), h); sctx.closePath();
-    sctx.fillStyle = 'rgba(0,255,65,0.08)'; sctx.fill();
+    sctx.save(); sctx.globalAlpha = .1; sctx.fillStyle = C.accent; sctx.fill(); sctx.restore();
     sctx.beginPath();
     T.forEach((v, i) => i ? sctx.lineTo(X(i), Y(v)) : sctx.moveTo(X(i), Y(v)));
-    sctx.strokeStyle = C.dim; sctx.lineWidth = 1.2; sctx.stroke();
+    sctx.strokeStyle = C.faint; sctx.lineWidth = 1.2; sctx.stroke();
     // played portion brighter
     sctx.beginPath();
     for (let i = 0; i <= S.day; i++) i ? sctx.lineTo(X(i), Y(T[i])) : sctx.moveTo(X(i), Y(T[i]));
-    sctx.strokeStyle = C.green; sctx.lineWidth = 1.6; sctx.stroke();
+    sctx.strokeStyle = C.accent; sctx.lineWidth = 1.8; sctx.stroke();
     const x = X(S.day);
-    sctx.strokeStyle = C.amber; sctx.lineWidth = 1;
+    sctx.strokeStyle = C.ink; sctx.lineWidth = 1;
     sctx.beginPath(); sctx.moveTo(x, 0); sctx.lineTo(x, h); sctx.stroke();
-    sctx.fillStyle = C.amber;
+    sctx.fillStyle = C.accent;
     sctx.beginPath(); sctx.arc(x, Y(T[S.day]), 3, 0, Math.PI * 2); sctx.fill();
-    sctx.fillStyle = C.dim; sctx.font = "10px 'Share Tech Mono', monospace"; sctx.textBaseline = 'top'; sctx.textAlign = 'left';
-    sctx.fillText('HI ' + money(hi), pad + 2, 1);
-    sctx.textBaseline = 'bottom';
-    sctx.fillText('LO ' + money(lo), pad + 2, h - 1);
+    sctx.font = `11px ${MONO}`;
+    const tag = (txt, y, base) => {
+      sctx.textBaseline = base; sctx.textAlign = 'left';
+      const tw = sctx.measureText(txt).width;
+      sctx.fillStyle = C.bgc; sctx.fillRect(pad, base === 'top' ? y : y - 13, tw + 6, 13);
+      sctx.fillStyle = C.muted; sctx.fillText(txt, pad + 3, y);
+    };
+    tag('HI ' + money(hi), 0, 'top');
+    tag('LO ' + money(lo), h, 'bottom');
   }
   function sparkPick(e) {
     const r = spark.getBoundingClientRect();
@@ -549,11 +562,11 @@
   }
   function play() {
     if (S.day >= M.dates.length - 1) goTo(0, false);
-    S.playing = true; playBtn.textContent = '❚❚ Pause';
+    S.playing = true; playBtn.textContent = 'Pause';
     clearTimeout(S.timer);
     S.timer = setTimeout(step, 300);
   }
-  function stop() { S.playing = false; clearTimeout(S.timer); playBtn.textContent = '▶ Play'; }
+  function stop() { S.playing = false; clearTimeout(S.timer); playBtn.textContent = 'Play'; }
   playBtn.addEventListener('click', () => S.playing ? stop() : play());
   document.getElementById('prev').addEventListener('click', () => { stop(); goTo(S.day - 1); });
   document.getElementById('next').addEventListener('click', () => { stop(); goTo(S.day + 1); });
@@ -574,8 +587,8 @@
     document.getElementById('d0').textContent = M.dates[0];
     document.getElementById('d1').textContent = M.dates[M.dates.length - 1];
     document.getElementById('src').innerHTML = raw.sample
-      ? 'SOURCE: <b>SAMPLE PORTFOLIO</b> · NOT YOUR DATA'
-      : `SOURCE: <b>${raw.label}</b> · ${M.tickers.length} HOLDINGS · ${M.dates.length} DAYS`;
+      ? '<b>Sample portfolio</b> · not your data'
+      : `<b>Your CSV</b> · ${M.tickers.length} holdings · ${M.dates.length} days`;
     goTo(0, false);
   }
   document.getElementById('csv').addEventListener('change', e => {
@@ -583,14 +596,17 @@
     const rd = new FileReader();
     rd.onload = () => {
       try { load(parseCSV(rd.result)); if (!reduced) play(); }
-      catch (err) { document.getElementById('src').innerHTML = `<span class="err">CSV NOT LOADED: ${err.message}</span>`; }
+      catch (err) { document.getElementById('src').innerHTML = `<span class="err">CSV not loaded: ${err.message}</span>`; }
     };
     rd.readAsText(f);
     e.target.value = '';
   });
 
-  function relayout() { sizeRing(); drawRing(); if (M) drawSpark(); }
+  function relayout() { readTokens(); sizeRing(); drawRing(); if (M) drawSpark(); }
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', relayout);
+  new MutationObserver(relayout).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   new ResizeObserver(relayout).observe(ring);
+  readTokens();
   sizeRing();
   load(sampleData());
   // Open on a full picture; autoplay from day 1 once fonts are in.
