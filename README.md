@@ -206,7 +206,8 @@ brokerage account day by day. Each holding is a slice of a ring sized by its sha
 of the account, with its ticker written around the outside. A bar on each slice
 shows that day's move: outward and green when up, inward and red when down. By
 default the gainers snap together at 12 o'clock like magnets, strongest in the
-middle, while the biggest losers sink to 6 o'clock. The layout menu can instead
+middle. Losers are pushed away, leaving a gap on each side of the gainers, and
+the biggest losers sink to 6 o'clock. The layout menu can instead
 keep a fixed order or turn the day's biggest mover to 12 o'clock.
 
 Open the file directly in a browser. It starts with a sample portfolio. **Load CSV**

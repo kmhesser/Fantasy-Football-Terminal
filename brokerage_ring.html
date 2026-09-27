@@ -157,7 +157,7 @@
         <tbody id="rows"></tbody>
       </table>
       <div class="notes" id="notes">
-        <p><b>Magnetize gainers</b> pulls every green ticker together at 12 o’clock, strongest gainer in the middle; the biggest losers sink to 6 o’clock.</p>
+        <p><b>Magnetize gainers</b> pulls every green ticker together at 12 o’clock, strongest gainer in the middle. Red tickers are pushed away, leaving a gap on each side, and the biggest losers sink to 6 o’clock.</p>
         <p><b>Slice</b> is the holding's share of the account. <b>Bar</b> is the day's move: outward when up, inward when down. Dotted rings mark ±2.5% and ±5%.</p>
         <p><b>Load CSV</b> with a header row of <code>date,ticker,value</code> or <code>date,ticker,shares,price</code>, one row per holding per day. The file stays in your browser.</p>
       </div>
@@ -277,26 +277,38 @@
 
   // ---------- state + tween ----------
   const S = { day: 0, from: null, to: null, t0: 0, dur: 600, cur: null, hot: -1, playing: false, timer: 0 };
-  const TAU = Math.PI * 2, TOP = -Math.PI / 2;
+  const TAU = Math.PI * 2, TOP = -Math.PI / 2, REPEL_GAP = 0.2;
   function snapshot(d) {
     const pct = M.pct[d], w = M.weights[d], n = w.length;
     const mode = document.getElementById('layout').value;
     let top = 0;
     pct.forEach((p, i) => { if (Math.abs(p) > Math.abs(pct[top])) top = i; });
     let rot = S.cur ? S.cur.rot : TOP;
-    const ang = new Array(n);
+    const ang = new Array(n), near = new Array(n).fill(0);
+    let sw = w.map(v => v * TAU);
     let cl = [TOP, TOP];
     if (mode === 'magnet' && d > 0) {
       // Best gainer centred at 12 o'clock; each next-best attaches to whichever side
       // of the block is shorter, so gainers pack together and the worst losers end up at 6.
+      // Losers are held off the gainer block by an empty buffer on each side (the repulsion).
       const order = [...Array(n).keys()].sort((x, y) => pct[y] - pct[x]);
+      const gainers = order.filter(i => pct[i] > .005).length;
+      const buffer = gainers && gainers < order.filter(i => w[i] > 0).length ? REPEL_GAP : 0;
+      const k = (TAU - 2 * buffer) / TAU;
+      sw = w.map(v => v * TAU * k);
       let L = TOP, R = TOP;
-      order.forEach((i, k) => {
-        const sw = w[i] * TAU;
-        if (k === 0) { ang[i] = TOP - sw / 2; L = ang[i]; R = ang[i] + sw; }
-        else if (R - TOP <= TOP - L) { ang[i] = R; R += sw; }
-        else { L -= sw; ang[i] = L; }
-        if (pct[i] > .005) cl = [L, R];
+      order.forEach((i, j) => {
+        if (j === gainers && buffer) { cl = [L, R]; L -= buffer; R += buffer; }
+        if (j === 0) { ang[i] = TOP - sw[i] / 2; L = ang[i]; R = ang[i] + sw[i]; }
+        else if (R - TOP <= TOP - L) { ang[i] = R; R += sw[i]; }
+        else { L -= sw[i]; ang[i] = L; }
+        if (j === gainers - 1 && !buffer) cl = [L, R];
+      });
+      // how hard each loser gets shoved: strongest right next to the gainer block
+      if (buffer) order.slice(gainers).forEach(i => {
+        const mid = ang[i] + sw[i] / 2;
+        const dist = Math.min(Math.abs(mid - cl[0]), Math.abs(mid - cl[1]));
+        near[i] = Math.max(0, 1 - dist / 1.4);
       });
     } else {
       if (mode === 'spin' && d > 0) {
@@ -316,7 +328,7 @@
       while (ang[i] - S.cur.ang[i] > Math.PI) ang[i] -= TAU;
       while (ang[i] - S.cur.ang[i] < -Math.PI) ang[i] += TAU;
     }
-    return { w: w.slice(), pct: pct.slice(), val: M.values[d].slice(), total: M.totals[d],
+    return { w: w.slice(), sw, near, pct: pct.slice(), val: M.values[d].slice(), total: M.totals[d],
              rot, ang, cl, mode, top: d > 0 && mode !== 'magnet' ? top : -1, best: d > 0 && pct[top] !== 0 ? top : -1 };
   }
   function goTo(d, animate = true) {
@@ -340,6 +352,8 @@
     const u = (t - .7) / .3;
     return 1 + .06 * Math.sin(u * TAU) * (1 - u);
   };
+  // shoved away: fast start, overshoots, settles back
+  const repel = t => { const c = 1.9, u = t - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
   function tick(now) {
     const t = S.dur ? Math.min(1, (now - S.t0) / S.dur) : 1;
     const e = ease(t), f = S.from, g = S.to;
@@ -349,7 +363,10 @@
       val: g.val.map((v, i) => lerp(f.val[i], v, e)),
       total: lerp(f.total, g.total, e),
       rot: lerp(f.rot, g.rot, e),
-      ang: g.ang.map((v, i) => lerp(f.ang[i], v, g.mode === 'magnet' && g.pct[i] > .005 ? magnet(t) : e)),
+      ang: g.ang.map((v, i) => lerp(f.ang[i], v,
+        g.mode !== 'magnet' ? e : g.pct[i] > .005 ? magnet(t) : repel(t))),
+      sw: g.sw.map((v, i) => lerp(f.sw[i], v, e)),
+      kick: g.near.map(v => v * Math.sin(Math.PI * Math.min(1, t * 1.25))),
       cl: [lerp(f.cl[0], g.cl[0], e), lerp(f.cl[1], g.cl[1], e)],
       mode: g.mode,
       top: g.top
@@ -405,7 +422,7 @@
     rctx.restore();
 
     const n = st.w.length, gap = Math.min(.01, Math.PI / n / 6);
-    const mids = st.ang.map((a0, i) => [a0, a0 + st.w[i] * TAU]);
+    const mids = st.ang.map((a0, i) => [a0, a0 + st.sw[i]]);
     const drawOrder = [...Array(n).keys()].sort((x, y) => st.pct[x] - st.pct[y]);
     for (const i of drawOrder) {
       const [a0, a1] = mids[i], sweep = a1 - a0;
@@ -467,7 +484,8 @@
       const left = c < 0;
       const p = st.pct[i], on = hot || top;
       rctx.save();
-      rctx.translate(cx + c * rLab, cy + sn * rLab);
+      const rL = rLab + st.kick[i] * font * 1.4; // losers get knocked outward as gainers snap in
+      rctx.translate(cx + c * rL, cy + sn * rL);
       rctx.rotate(left ? mid + Math.PI : mid);
       const tk = M.tickers[i], ps = pctStr(p);
       const tkFont = `${on ? 600 : 500} ${font}px ${MONO}`, pFont = `400 ${font * .82}px ${MONO}`;
@@ -539,7 +557,7 @@
     const order = [...S.cur.w.keys()].sort((p, q) => S.cur.pct[q] - S.cur.pct[p]);
     for (const i of order) {
       const rel = (((at - S.cur.ang[i]) % TAU) + TAU) % TAU;
-      if (rel < S.cur.w[i] * TAU) return i;
+      if (rel < S.cur.sw[i]) return i;
     }
     return -1;
   }
