@@ -1,2 +1,6 @@
 __pycache__/
 env/
+
+# Brokerage Ring: personal holdings and saved closes
+holdings.csv
+brokerage_history.csv

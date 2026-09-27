@@ -1,0 +1,7 @@
+ticker,shares
+# One row per holding. Share counts only; prices come from the quote feed.
+VTI,140
+NVDA,95
+AAPL,60
+MSFT,28
+BRK.B,20

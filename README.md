@@ -201,18 +201,38 @@ filled in and that you're a member of that league.
 
 ## Brokerage Ring (side project)
 
-`brokerage_ring.html` is a standalone page that replays a
-brokerage account day by day. Each holding is a slice of a ring sized by its share
-of the account, with its ticker written around the outside. A bar on each slice
-shows that day's move: outward and green when up, inward and red when down. By
-default the gainers snap together at 12 o'clock like magnets, strongest in the
-middle. Losers are pushed away, leaving a gap on each side of the gainers, and
-the biggest losers sink to 6 o'clock. The layout menu can instead
-keep a fixed order or turn the day's biggest mover to 12 o'clock.
+`brokerage_ring.html` shows a brokerage account as a ring. Each holding is a slice
+sized by its share of the account, with its ticker in a pill around the outside:
+green when the stock is up from yesterday's close, red when it's down. A bar on
+each slice shows the size of the move. Gainers pull together at 12 o'clock like
+magnets, strongest in the middle; losers are pushed away and the worst sink to
+6 o'clock.
 
-Open the file directly in a browser. It starts with a sample portfolio. **Load CSV**
-takes a header row of `date,ticker,value` or `date,ticker,shares,price`, one row per
-holding per day. The file is read in the browser and never uploaded.
+**Live** follows prices through the trading day. Every quote nudges the ring
+toward the new layout with spring physics, so small price changes show up as a
+gentle drift and a slice slides across only when its rank changes.
+
+```
+cp holdings.example.csv holdings.csv     # then edit: ticker,shares
+pip install -r requirements.txt
+python brokerage_server.py               # → http://localhost:8889
+```
+
+| Setting | What it does |
+| --- | --- |
+| `QUOTES_PROVIDER=yahoo` | Default. Yahoo Finance chart API, no key. Unofficial, and some quotes are delayed. |
+| `QUOTES_PROVIDER=finnhub` + `FINNHUB_API_KEY` | Finnhub quotes. The free tier allows 60 calls a minute, so polling slows down for large portfolios. |
+| `QUOTES_PROVIDER=sim` | Made-up prices, for trying it out offline. |
+
+Quotes refresh every 15 seconds while the market is open (9:30–4:00 ET, weekdays;
+exchange holidays aren't handled). After the close the server saves that day's
+prices to `brokerage_history.csv`. `holdings.csv` and the history file are
+git-ignored.
+
+**Daily replay** steps through closing values day by day, from the saved history,
+a CSV you load (`date,ticker,value` or `date,ticker,shares,price`), or sample data.
+Opening the HTML file directly, without the server, plays a simulated trading
+session instead of live quotes.
 
 ---
 

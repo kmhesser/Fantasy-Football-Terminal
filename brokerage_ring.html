@@ -36,6 +36,7 @@
     --rule: #263140; --slice: #1e2733; --accent: #8098ff; --up: #3ccb8f; --down: #ff6b61; --flat: #d9b44a;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
   body {
     background: var(--bg);
     color: var(--ink);
@@ -77,6 +78,18 @@
   label.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
   label.chk input { accent-color: var(--accent); }
   .spacer { flex: 1; }
+  .ctl { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--surface); }
+  .seg button { border: 0; border-radius: 0; background: transparent; }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .status { display: flex; align-items: center; gap: 8px; font: 12px var(--mono); color: var(--muted); min-height: 18px; }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .status.on .dot { background: var(--up); animation: pulse 2s ease-in-out infinite; }
+  .status.err { color: var(--down); }
+  .status.err .dot { background: var(--down); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .status.on .dot { animation: none; } }
   #csv { position: absolute; width: 1px; height: 1px; opacity: 0; }
 
   .tape { display: flex; flex-direction: column; gap: 4px; }
@@ -124,15 +137,21 @@
       <div class="ring-box"><canvas id="ring" aria-label="Portfolio ring: each holding is a slice sized by its weight, with its ticker around the edge and a bar showing its daily move"></canvas></div>
 
       <div class="controls">
-        <button id="prev" title="Previous day (←)">← Day</button>
-        <button id="play" title="Play / pause (space)">Play</button>
-        <button id="next" title="Next day (→)">Day →</button>
-        <select id="speed" aria-label="Playback speed">
-          <option value="1400">0.5×</option>
-          <option value="700" selected>1×</option>
-          <option value="350">2×</option>
-          <option value="160">4×</option>
-        </select>
+        <div class="seg" role="group" aria-label="Mode">
+          <button id="mLive" aria-pressed="true">Live</button>
+          <button id="mReplay" aria-pressed="false">Daily replay</button>
+        </div>
+        <span id="replayCtl" class="ctl" hidden>
+          <button id="prev" title="Previous day (←)">← Day</button>
+          <button id="play" title="Play / pause (space)">Play</button>
+          <button id="next" title="Next day (→)">Day →</button>
+          <select id="speed" aria-label="Playback speed">
+            <option value="1400">0.5×</option>
+            <option value="700" selected>1×</option>
+            <option value="350">2×</option>
+            <option value="160">4×</option>
+          </select>
+        </span>
         <select id="layout" aria-label="Ring layout">
           <option value="magnet" selected>Magnetize gainers</option>
           <option value="spin">Turn top mover to 12 o’clock</option>
@@ -142,10 +161,11 @@
         <input type="file" id="csv" accept=".csv,text/csv">
         <label for="csv" class="filebtn" title="CSV with columns: date,ticker,value  or  date,ticker,shares,price">Load CSV</label>
       </div>
+      <div class="status" id="liveStatus"><span class="dot"></span><span id="liveText">Connecting…</span></div>
 
       <div class="tape">
         <canvas id="spark" aria-hidden="true"></canvas>
-        <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Day">
+        <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Day" hidden>
         <div class="tape-legend"><span id="d0"></span><span id="dcur"></span><span id="d1"></span></div>
       </div>
     </section>
@@ -153,13 +173,14 @@
     <aside>
       <h2>Movers <span id="asof"></span></h2>
       <table>
-        <thead><tr><th>Ticker</th><th>Value</th><th>Wt</th><th>Day</th></tr></thead>
+        <thead><tr><th>Ticker</th><th>Value</th><th>Wt</th><th>Today</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="notes" id="notes">
         <p><b>Magnetize gainers</b> pulls every green ticker together at 12 o’clock, strongest gainer in the middle. Red tickers are pushed away, leaving a gap on each side, and the biggest losers sink to 6 o’clock.</p>
-        <p><b>Slice</b> is the holding's share of the account. <b>Bar</b> is the day's move: outward when up, inward when down. Dotted rings mark ±2.5% and ±5%.</p>
-        <p><b>Load CSV</b> with a header row of <code>date,ticker,value</code> or <code>date,ticker,shares,price</code>, one row per holding per day. The file stays in your browser.</p>
+        <p><b>Slice</b> is the holding's share of the account. <b>Bar</b> is today's move from the previous close: outward when up, inward when down. Dotted rings mark ±2.5% and ±5%.</p>
+        <p><b>Live</b> follows prices through the trading day and drifts as they tick. Run <code>brokerage_server.py</code> to feed it your holdings and real quotes; without it the page plays a simulated session.</p>
+        <p><b>Daily replay</b> steps through closing values day by day. <b>Load CSV</b> with a header row of <code>date,ticker,value</code> or <code>date,ticker,shares,price</code>, one row per holding per day. The file stays in your browser.</p>
       </div>
     </aside>
   </div>
@@ -178,8 +199,10 @@
   const DISPLAY = "'Bricolage Grotesque', 'Helvetica Neue', Arial, sans-serif";
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const BAR_SCALE = 5; // % move that fills the full bar length
+  const TAU = Math.PI * 2, TOP = -Math.PI / 2, REPEL_GAP = 0.2;
+  const $ = id => document.getElementById(id);
 
-  // ---------- sample data ----------
+  // ---------- sample book ----------
   function mulberry(seed) {
     return () => {
       seed |= 0; seed = seed + 0x6D2B79F5 | 0;
@@ -188,17 +211,18 @@
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
   }
-  function sampleData() {
+  // ticker, shares, starting price, daily volatility, beta
+  const BOOK = [
+    ['VTI', 140, 292, .009, 1.0], ['NVDA', 95, 168, .028, 1.7], ['AAPL', 60, 231, .015, 1.1],
+    ['MSFT', 28, 508, .013, 1.0], ['AMZN', 45, 224, .018, 1.2], ['GOOGL', 50, 246, .017, 1.1],
+    ['META', 12, 742, .021, 1.3], ['BRK.B', 20, 489, .009, .6], ['JPM', 30, 301, .013, .9],
+    ['COST', 8, 935, .011, .6], ['LLY', 9, 761, .019, .5], ['XOM', 40, 113, .014, .5],
+    ['SCHD', 180, 27.4, .008, .7], ['AMD', 40, 158, .029, 1.6], ['TSLA', 18, 421, .034, 1.8],
+    ['V', 22, 342, .011, .8]
+  ];
+  function sampleHistory() {
     const rnd = mulberry(20260925);
-    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
-    const book = [
-      ['VTI', 140, 292, .009, 1.0], ['NVDA', 95, 168, .028, 1.7], ['AAPL', 60, 231, .015, 1.1],
-      ['MSFT', 28, 508, .013, 1.0], ['AMZN', 45, 224, .018, 1.2], ['GOOGL', 50, 246, .017, 1.1],
-      ['META', 12, 742, .021, 1.3], ['BRK.B', 20, 489, .009, .6], ['JPM', 30, 301, .013, .9],
-      ['COST', 8, 935, .011, .6], ['LLY', 9, 761, .019, .5], ['XOM', 40, 113, .014, .5],
-      ['SCHD', 180, 27.4, .008, .7], ['AMD', 40, 158, .029, 1.6], ['TSLA', 18, 421, .034, 1.8],
-      ['V', 22, 342, .011, .8]
-    ];
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(TAU * rnd());
     // 90 weekdays ending Fri 2026-09-25
     const dates = [];
     const d = new Date(Date.UTC(2026, 8, 25));
@@ -207,21 +231,20 @@
       if (wd !== 0 && wd !== 6) dates.unshift(d.toISOString().slice(0, 10));
       d.setUTCDate(d.getUTCDate() - 1);
     }
-    const tickers = book.map(b => b[0]);
     const prices = [], values = [];
-    let p = book.map(b => b[2]);
+    let p = BOOK.map(b => b[2]);
     for (let di = 0; di < dates.length; di++) {
       if (di > 0) {
         const mkt = gauss() * .009 + .0004;
-        p = p.map((px, i) => px * (1 + book[i][4] * mkt + gauss() * book[i][3] * .8));
+        p = p.map((px, i) => px * (1 + BOOK[i][4] * mkt + gauss() * BOOK[i][3] * .8));
       }
       prices.push(p.slice());
-      values.push(p.map((px, i) => px * book[i][1]));
+      values.push(p.map((px, i) => px * BOOK[i][1]));
     }
-    return { dates, tickers, prices, values, label: 'SAMPLE PORTFOLIO', sample: true };
+    return { dates, tickers: BOOK.map(b => b[0]), prices, values, sample: true };
   }
 
-  // ---------- CSV import ----------
+  // ---------- CSV import (daily replay) ----------
   function parseCSV(text) {
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     if (lines.length < 2) throw new Error('The file needs a header row and at least one data row.');
@@ -249,12 +272,12 @@
     const tickers = [...tset];
     const values = dates.map(d => tickers.map(t => byDate.get(d).get(t)?.value ?? 0));
     const prices = dates.map(d => tickers.map(t => byDate.get(d).get(t)?.price ?? NaN));
-    return { dates, tickers, prices, values, label: 'YOUR CSV', sample: false };
+    return { dates, tickers, prices, values, sample: false };
   }
 
-  // ---------- derived model ----------
-  let M; // { dates, tickers(order by avg weight), weights[d][i], pct[d][i], values[d][i], totals[d] }
-  function build(raw) {
+  // Replay model: tickers ordered by average weight, per-day weights and % moves
+  let M = null;
+  function buildReplay(raw) {
     const n = raw.tickers.length, D = raw.dates.length;
     const totals = raw.values.map(r => r.reduce((a, b) => a + b, 0));
     const avgW = raw.tickers.map((_, i) => raw.values.reduce((a, r, d) => a + r[i] / (totals[d] || 1), 0) / D);
@@ -268,26 +291,55 @@
       const v0 = values[d - 1][i];
       return v0 > 0 && v > 0 ? (v / v0 - 1) * 100 : 0;
     }));
-    M = {
-      dates: raw.dates, tickers: pick(raw.tickers), values, pct, totals,
-      weights: values.map((r, d) => r.map(v => v / (totals[d] || 1))),
-      label: raw.label, sample: raw.sample
+    M = { dates: raw.dates, tickers: pick(raw.tickers), values, pct, totals, sample: raw.sample,
+          weights: values.map((r, d) => r.map(v => v / (totals[d] || 1))) };
+  }
+  function replayFrame(d) {
+    const dt = new Date(M.dates[d] + 'T12:00:00Z');
+    const chg = d > 0 ? M.totals[d] - M.totals[d - 1] : 0;
+    return {
+      tickers: M.tickers, w: M.weights[d], pct: M.pct[d], val: M.values[d], total: M.totals[d],
+      chg, chgP: d > 0 ? chg / M.totals[d - 1] * 100 : 0, moved: d > 0,
+      head: isNaN(dt) ? M.dates[d] : dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
+      idle: d === 0 ? 'Start of range' : null, foot: `Day ${d + 1} of ${M.dates.length}`, asof: M.dates[d]
     };
   }
 
-  // ---------- state + tween ----------
-  const S = { day: 0, from: null, to: null, t0: 0, dur: 600, cur: null, hot: -1, playing: false, timer: 0 };
-  const TAU = Math.PI * 2, TOP = -Math.PI / 2, REPEL_GAP = 0.2;
-  function snapshot(d) {
-    const pct = M.pct[d], w = M.weights[d], n = w.length;
-    const mode = document.getElementById('layout').value;
+  // Live model: holdings [{ticker, shares, price, prev_close}] -> frame
+  const L = { tickers: null, session: [], prevTotal: 0, open: false, asof: 0, source: null, poll: 0, sim: null, err: null };
+  function liveFrame(h) {
+    if (!L.tickers) L.tickers = h.slice().sort((a, b) => b.shares * b.price - a.shares * a.price).map(x => x.ticker);
+    const by = new Map(h.map(x => [x.ticker, x]));
+    for (const x of h) if (!L.tickers.includes(x.ticker)) L.tickers.push(x.ticker);
+    const val = L.tickers.map(t => by.has(t) ? by.get(t).shares * by.get(t).price : 0);
+    const prev = L.tickers.map(t => by.has(t) ? by.get(t).shares * by.get(t).prev_close : 0);
+    const pct = L.tickers.map(t => { const x = by.get(t); return x && x.prev_close > 0 ? (x.price / x.prev_close - 1) * 100 : 0; });
+    const total = val.reduce((a, b) => a + b, 0), prevTotal = prev.reduce((a, b) => a + b, 0);
+    L.prevTotal = prevTotal;
+    const tm = etClock(L.asof);
+    return {
+      tickers: L.tickers, w: val.map(v => v / (total || 1)), pct, val, total,
+      chg: total - prevTotal, chgP: prevTotal ? (total / prevTotal - 1) * 100 : 0, moved: true,
+      head: (L.sim ? 'Simulated · ' : L.open ? 'Live · ' : 'Market closed · ') + tm + ' ET',
+      idle: null, foot: `${L.tickers.length} holdings · vs. previous close`, asof: L.open ? 'today' : 'last close'
+    };
+  }
+  function etClock(ms) {
+    return new Date(ms || Date.now()).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: L.sim ? undefined : '2-digit', timeZone: 'America/New_York' });
+  }
+
+  // ---------- layout: where each slice should sit ----------
+  const S = { mode: 'live', cur: null, to: null, vel: null, frame: null, hot: -1, day: 0, playing: false, timer: 0, ks: 1 };
+  function layout(fr) {
+    const { pct, w } = fr, n = w.length;
+    const mode = $('layout').value;
     let top = 0;
     pct.forEach((p, i) => { if (Math.abs(p) > Math.abs(pct[top])) top = i; });
-    let rot = S.cur ? S.cur.rot : TOP;
+    let rot = S.to ? S.to.rot : TOP;
     const ang = new Array(n), near = new Array(n).fill(0);
     let sw = w.map(v => v * TAU);
     let cl = [TOP, TOP];
-    if (mode === 'magnet' && d > 0) {
+    if (mode === 'magnet' && fr.moved) {
       // Best gainer centred at 12 o'clock; each next-best attaches to whichever side
       // of the block is shorter, so gainers pack together and the worst losers end up at 6.
       // Losers are held off the gainer block by an empty buffer on each side (the repulsion).
@@ -296,13 +348,13 @@
       const buffer = gainers && gainers < order.filter(i => w[i] > 0).length ? REPEL_GAP : 0;
       const k = (TAU - 2 * buffer) / TAU;
       sw = w.map(v => v * TAU * k);
-      let L = TOP, R = TOP;
+      let Lf = TOP, R = TOP;
       order.forEach((i, j) => {
-        if (j === gainers && buffer) { cl = [L, R]; L -= buffer; R += buffer; }
-        if (j === 0) { ang[i] = TOP - sw[i] / 2; L = ang[i]; R = ang[i] + sw[i]; }
-        else if (R - TOP <= TOP - L) { ang[i] = R; R += sw[i]; }
-        else { L -= sw[i]; ang[i] = L; }
-        if (j === gainers - 1 && !buffer) cl = [L, R];
+        if (j === gainers && buffer) { cl = [Lf, R]; Lf -= buffer; R += buffer; }
+        if (j === 0) { ang[i] = TOP - sw[i] / 2; Lf = ang[i]; R = ang[i] + sw[i]; }
+        else if (R - TOP <= TOP - Lf) { ang[i] = R; R += sw[i]; }
+        else { Lf -= sw[i]; ang[i] = Lf; }
+        if (j === gainers - 1 && !buffer) cl = [Lf, R];
       });
       // how hard each loser gets shoved: strongest right next to the gainer block
       if (buffer) order.slice(gainers).forEach(i => {
@@ -311,7 +363,7 @@
         near[i] = Math.max(0, 1 - dist / 1.4);
       });
     } else {
-      if (mode === 'spin' && d > 0) {
+      if (mode === 'spin' && fr.moved) {
         let cum = 0;
         for (let i = 0; i < top; i++) cum += w[i];
         const target = TOP - (cum + w[top] / 2) * TAU;
@@ -323,83 +375,86 @@
       let cum = rot;
       for (let i = 0; i < n; i++) { ang[i] = cum; cum += w[i] * TAU; }
     }
-    // travel the short way round from where each slice is now
-    if (S.cur) for (let i = 0; i < n; i++) {
-      while (ang[i] - S.cur.ang[i] > Math.PI) ang[i] -= TAU;
-      while (ang[i] - S.cur.ang[i] < -Math.PI) ang[i] += TAU;
+    return { w: w.slice(), sw, near, pct: pct.slice(), val: fr.val.slice(), total: fr.total, chg: fr.chg, chgP: fr.chgP,
+             rot, ang, cl, mode, top: fr.moved && mode !== 'magnet' ? top : -1, best: fr.moved && pct[top] !== 0 ? top : -1 };
+  }
+
+  // ---------- motion: springs toward the latest target ----------
+  // Every update (a new day in replay, a new quote in live) just moves the targets.
+  // Small price changes make small target moves, so the ring drifts; a rank swap slides.
+  function setFrame(fr, instant = false) {
+    S.frame = fr;
+    const tg = layout(fr);
+    const fresh = !S.cur || S.cur.ang.length !== tg.ang.length;
+    if (!fresh) {
+      for (let i = 0; i < tg.ang.length; i++) { // travel the short way round
+        while (tg.ang[i] - S.cur.ang[i] > Math.PI) tg.ang[i] -= TAU;
+        while (tg.ang[i] - S.cur.ang[i] < -Math.PI) tg.ang[i] += TAU;
+      }
+      // repulsion: a loser whose slot jumps gets knocked outward, harder the closer it sits to the gainers
+      if (!instant && !reduced) tg.near.forEach((nv, i) => {
+        if (nv > 0 && Math.abs(tg.ang[i] - S.to.ang[i]) > .015) S.vel.kick[i] += nv * 9;
+      });
     }
-    return { w: w.slice(), sw, near, pct: pct.slice(), val: M.values[d].slice(), total: M.totals[d],
-             rot, ang, cl, mode, top: d > 0 && mode !== 'magnet' ? top : -1, best: d > 0 && pct[top] !== 0 ? top : -1 };
+    S.to = tg;
+    if (fresh || instant || reduced) {
+      S.cur = { ...tg, ang: tg.ang.slice(), sw: tg.sw.slice(), w: tg.w.slice(), pct: tg.pct.slice(), val: tg.val.slice(),
+                cl: tg.cl.slice(), kick: new Array(tg.ang.length).fill(0) };
+      S.vel = { ang: new Array(tg.ang.length).fill(0), kick: new Array(tg.ang.length).fill(0) };
+    }
+    S.cur.mode = tg.mode; S.cur.top = tg.top;
+    renderTable(); drawSpark(); wake();
   }
-  function goTo(d, animate = true) {
-    d = Math.max(0, Math.min(M.dates.length - 1, d));
-    S.day = d;
-    const target = snapshot(d);
-    S.from = S.cur || target;
-    S.to = target;
-    S.t0 = performance.now();
-    S.dur = animate && !reduced ? Math.min(900, +document.getElementById('speed').value * 0.9) : 0;
-    scrub.value = d;
-    renderTable();
-    drawSpark();
-    kick();
-  }
-  const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-  const lerp = (a, b, t) => a + (b - a) * t;
-  // slow pull, accelerating snap, small decaying wobble on contact
-  const magnet = t => {
-    if (t < .7) { const u = t / .7; return u * u * u; }
-    const u = (t - .7) / .3;
-    return 1 + .06 * Math.sin(u * TAU) * (1 - u);
-  };
-  // shoved away: fast start, overshoots, settles back
-  const repel = t => { const c = 1.9, u = t - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
-  function tick(now) {
-    const t = S.dur ? Math.min(1, (now - S.t0) / S.dur) : 1;
-    const e = ease(t), f = S.from, g = S.to;
-    S.cur = {
-      w: g.w.map((v, i) => lerp(f.w[i], v, e)),
-      pct: g.pct.map((v, i) => lerp(f.pct[i], v, e)),
-      val: g.val.map((v, i) => lerp(f.val[i], v, e)),
-      total: lerp(f.total, g.total, e),
-      rot: lerp(f.rot, g.rot, e),
-      ang: g.ang.map((v, i) => lerp(f.ang[i], v,
-        g.mode !== 'magnet' ? e : g.pct[i] > .005 ? magnet(t) : repel(t))),
-      sw: g.sw.map((v, i) => lerp(f.sw[i], v, e)),
-      kick: g.near.map(v => v * Math.sin(Math.PI * Math.min(1, t * 1.25))),
-      cl: [lerp(f.cl[0], g.cl[0], e), lerp(f.cl[1], g.cl[1], e)],
-      mode: g.mode,
-      top: g.top
-    };
+  let raf = 0, last = 0;
+  function wake() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); } }
+  function frame(now) {
+    let dt = Math.min(.05, (now - last) / 1000); last = now;
+    const moving = physics(dt);
     drawRing();
-    if (t < 1) raf = requestAnimationFrame(tick); else raf = 0;
+    raf = moving ? requestAnimationFrame(frame) : 0;
   }
-  let raf = 0;
-  function kick() { if (!raf) raf = requestAnimationFrame(tick); }
+  function physics(dt) {
+    const cur = S.cur, to = S.to, v = S.vel, ks = S.ks;
+    if (!cur) return false;
+    let moving = false;
+    const steps = Math.max(1, Math.ceil(dt / (1 / 120))), h = dt / steps;
+    const ease = 1 - Math.exp(-dt * 6 * Math.sqrt(ks));
+    for (let s = 0; s < steps; s++) {
+      for (let i = 0; i < cur.ang.length; i++) {
+        // gainers are pulled in (stiff, slight snap); losers are shoved (looser, more overshoot)
+        const gain = to.mode === 'magnet' && to.pct[i] > .005;
+        const K = (gain ? 55 : 38) * ks, c = 2 * (gain ? .7 : .45) * Math.sqrt(K);
+        v.ang[i] += (K * (to.ang[i] - cur.ang[i]) - c * v.ang[i]) * h;
+        cur.ang[i] += v.ang[i] * h;
+        const Kk = 90 * Math.max(1, ks), ck = 2 * .35 * Math.sqrt(Kk);
+        v.kick[i] += (-Kk * cur.kick[i] - ck * v.kick[i]) * h;
+        cur.kick[i] += v.kick[i] * h;
+      }
+    }
+    const lerpArr = k => cur[k].forEach((x, i) => { cur[k][i] = x + (to[k][i] - x) * ease; });
+    lerpArr('sw'); lerpArr('w'); lerpArr('pct'); lerpArr('val'); lerpArr('cl');
+    for (const k of ['total', 'chg', 'chgP']) cur[k] += (to[k] - cur[k]) * ease;
+    for (let i = 0; i < cur.ang.length; i++) {
+      if (Math.abs(to.ang[i] - cur.ang[i]) > 1e-4 || Math.abs(v.ang[i]) > 1e-3 ||
+          Math.abs(cur.kick[i]) > 1e-3 || Math.abs(to.pct[i] - cur.pct[i]) > 1e-3 || Math.abs(to.sw[i] - cur.sw[i]) > 1e-5) moving = true;
+    }
+    if (Math.abs(to.total - cur.total) > .5) moving = true;
+    return moving;
+  }
 
   // ---------- ring drawing ----------
-  const ring = document.getElementById('ring'), rctx = ring.getContext('2d');
+  const ring = $('ring'), rctx = ring.getContext('2d');
   let G = {};
   function sizeRing() {
     const dpr = window.devicePixelRatio || 1, px = ring.clientWidth;
     ring.width = px * dpr; ring.height = px * dpr;
     rctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const s = px;
-    G = {
-      s, cx: s / 2, cy: s / 2,
-      rIn: s * .2, rOut: s * .245, bar: s * .06,
-      font: Math.max(8, Math.min(14, s * .021))
-    };
+    G = { s, cx: s / 2, cy: s / 2, rIn: s * .2, rOut: s * .245, bar: s * .06, font: Math.max(8, Math.min(14, s * .021)) };
     G.rLab = G.rOut + G.bar + s * .015;
   }
   const money = (v, dp = 0) => '$' + v.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
-  const pctStr = p => (p > 0.005 ? '+' : p < -0.005 ? '' : '±') + p.toFixed(2) + '%';
-  function mix(a, b, t) {
-    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
-    const ch = s => [(s >> 16) & 255, (s >> 8) & 255, s & 255];
-    const A = ch(pa), B = ch(pb);
-    return `rgb(${A.map((x, i) => Math.round(x + (B[i] - x) * t)).join(',')})`;
-  }
+  const pctStr = p => (p > 0.005 ? '+' + p.toFixed(2) : p < -0.005 ? p.toFixed(2) : '±' + Math.abs(p).toFixed(2)) + '%';
   function band(r0, r1, a0, a1) {
     rctx.beginPath();
     rctx.arc(G.cx, G.cy, r1, a0, a1);
@@ -407,17 +462,15 @@
     rctx.closePath();
   }
   function drawRing() {
-    const st = S.cur; if (!st) return;
+    const st = S.cur, fr = S.frame; if (!st || !fr) return;
     const { s, cx, cy, rIn, rOut, bar, rLab, font } = G;
     rctx.clearRect(0, 0, s, s);
 
     // guides: ±2.5% and ±5%
     rctx.save();
     rctx.setLineDash([1, 4]); rctx.lineWidth = 1; rctx.strokeStyle = C.rule;
-    for (const k of [.5, 1]) {
-      for (const r of [rOut + 2 + bar * k, rIn - 2 - bar * k]) {
-        rctx.beginPath(); rctx.arc(cx, cy, r, 0, Math.PI * 2); rctx.stroke();
-      }
+    for (const k of [.5, 1]) for (const r of [rOut + 2 + bar * k, rIn - 2 - bar * k]) {
+      rctx.beginPath(); rctx.arc(cx, cy, r, 0, TAU); rctx.stroke();
     }
     rctx.restore();
 
@@ -425,13 +478,12 @@
     const mids = st.ang.map((a0, i) => [a0, a0 + st.sw[i]]);
     const drawOrder = [...Array(n).keys()].sort((x, y) => st.pct[x] - st.pct[y]);
     for (const i of drawOrder) {
-      const [a0, a1] = mids[i], sweep = a1 - a0;
-      if (sweep < 1e-4) continue;
+      const [a0, a1] = mids[i];
+      if (a1 - a0 < 1e-4) continue;
       const p = st.pct[i], mag = Math.min(1, Math.abs(p) / BAR_SCALE);
       const hot = S.hot === i, top = st.top === i;
       const s0 = a0 + gap / 2, s1 = Math.max(s0, a1 - gap / 2);
       const dir = p > .005 ? C.up : p < -.005 ? C.down : C.flat;
-
       // slice: neutral, tinted toward the day's direction
       band(rIn, rOut, s0, s1);
       rctx.fillStyle = C.slice; rctx.fill();
@@ -440,11 +492,10 @@
       rctx.fillStyle = dir; rctx.fill();
       rctx.restore();
       if (hot || top) { rctx.lineWidth = 2; rctx.strokeStyle = C.accent; rctx.stroke(); }
-
       // move bar
       if (Math.abs(p) > .005) {
-        const L = Math.max(1.5, mag * bar), up = p > 0;
-        band(up ? rOut + 3 : rIn - 3 - L, up ? rOut + 3 + L : rIn - 3, s0, s1);
+        const Lb = Math.max(1.5, mag * bar), up = p > 0;
+        band(up ? rOut + 3 : rIn - 3 - Lb, up ? rOut + 3 + Lb : rIn - 3, s0, s1);
         rctx.fillStyle = dir; rctx.fill();
       }
     }
@@ -462,9 +513,7 @@
     // magnetic field: a green arc hugging the gainer cluster
     if (st.mode === 'magnet' && st.cl[1] - st.cl[0] > .02) {
       rctx.save();
-      rctx.lineCap = 'round';
-      rctx.strokeStyle = C.up;
-      rctx.globalAlpha = .7;
+      rctx.lineCap = 'round'; rctx.strokeStyle = C.up; rctx.globalAlpha = .7;
       rctx.lineWidth = Math.max(2, s * .004);
       rctx.beginPath();
       rctx.arc(cx, cy, rLab - s * .008, st.cl[0] + .01, st.cl[1] - .01);
@@ -476,26 +525,23 @@
     rctx.textBaseline = 'middle';
     const padX = font * .55, pillH = font * 1.6, gapX = font * .45;
     for (const i of drawOrder) {
-      const [a0, a1] = mids[i], sweep = a1 - a0;
+      const [a0, a1] = mids[i];
       const hot = S.hot === i, top = st.top === i;
-      if (sweep * rLab < pillH * 1.05 && !hot) continue;
-      const mid = (a0 + a1) / 2;
-      const c = Math.cos(mid), sn = Math.sin(mid);
-      const left = c < 0;
+      if ((a1 - a0) * rLab < pillH * 1.05 && !hot) continue;
+      const mid = (a0 + a1) / 2, c = Math.cos(mid), sn = Math.sin(mid), left = c < 0;
       const p = st.pct[i], on = hot || top;
       rctx.save();
-      const rL = rLab + st.kick[i] * font * 1.4; // losers get knocked outward as gainers snap in
+      const rL = rLab + st.kick[i] * font * 1.4; // losers get knocked outward when shoved
       rctx.translate(cx + c * rL, cy + sn * rL);
       rctx.rotate(left ? mid + Math.PI : mid);
-      const tk = M.tickers[i], ps = pctStr(p);
+      const tk = fr.tickers[i], ps = pctStr(p);
       const tkFont = `${on ? 600 : 500} ${font}px ${MONO}`, pFont = `400 ${font * .82}px ${MONO}`;
       rctx.font = tkFont;
       const pillW = rctx.measureText(tk).width + padX * 2;
       rctx.font = pFont;
       const pw = rctx.measureText(ps).width;
       // reads "[TICKER] +x.xx%" left-to-right on both halves; x runs outward on the right, inward on the left
-      const pillX = left ? -(pw + gapX + pillW) : 0;
-      const pctX = left ? -pw : pillW + gapX;
+      const pillX = left ? -(pw + gapX + pillW) : 0, pctX = left ? -pw : pillW + gapX;
       // pill: green when up on the day, red when down, neutral when flat
       const dirC = p > .005 ? C.up : p < -.005 ? C.down : null;
       if (on) {
@@ -506,46 +552,30 @@
       }
       rctx.beginPath();
       rctx.roundRect(pillX, -pillH / 2, pillW, pillH, pillH / 2);
-      rctx.fillStyle = dirC || C.surface;
-      rctx.fill();
-      rctx.lineWidth = 1;
-      rctx.strokeStyle = dirC || C.rule;
-      rctx.stroke();
-      rctx.textAlign = 'center';
-      rctx.font = tkFont;
+      rctx.fillStyle = dirC || C.surface; rctx.fill();
+      rctx.lineWidth = 1; rctx.strokeStyle = dirC || C.rule; rctx.stroke();
+      rctx.textAlign = 'center'; rctx.font = tkFont;
       rctx.fillStyle = dirC ? C.surface : C.ink;
       rctx.fillText(tk, pillX + pillW / 2, 1);
-      rctx.textAlign = 'left';
-      rctx.font = pFont;
+      rctx.textAlign = 'left'; rctx.font = pFont;
       rctx.fillStyle = p > .005 ? C.up : p < -.005 ? C.down : C.flat;
       rctx.fillText(ps, pctX, 1);
       rctx.restore();
     }
 
     // center readout
-    const d = S.day, chg = d > 0 ? M.totals[d] - M.totals[d - 1] : 0;
-    const chgP = d > 0 ? chg / M.totals[d - 1] * 100 : 0;
-    rctx.textAlign = 'center';
-    rctx.textBaseline = 'middle';
-    rctx.fillStyle = C.muted;
-    rctx.font = `500 ${font * .9}px ${MONO}`;
-    const dt = new Date(M.dates[d] + 'T12:00:00Z');
-    const dlabel = isNaN(dt) ? M.dates[d] :
-      dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-    rctx.fillText(dlabel, cx, cy - rIn * .44);
-    rctx.fillStyle = C.ink;
-    rctx.font = `650 ${s * .058}px ${DISPLAY}`;
+    rctx.textAlign = 'center'; rctx.textBaseline = 'middle';
+    rctx.fillStyle = C.muted; rctx.font = `500 ${font * .9}px ${MONO}`;
+    rctx.fillText(fr.head, cx, cy - rIn * .44);
+    rctx.fillStyle = C.ink; rctx.font = `650 ${s * .058}px ${DISPLAY}`;
     rctx.fillText(money(st.total), cx, cy - rIn * .1);
     rctx.font = `500 ${font * 1.05}px ${MONO}`;
-    rctx.fillStyle = chg > 0 ? C.up : chg < 0 ? C.down : C.muted;
-    rctx.fillText(d === 0 ? 'Start of range' : `${chg >= 0 ? '+' : '\u2212'}${money(Math.abs(chg))}  ${pctStr(chgP)}`, cx, cy + rIn * .2);
-    rctx.fillStyle = C.muted;
-    rctx.font = `400 ${font * .8}px ${MONO}`;
+    const chg = st.chg;
+    rctx.fillStyle = chg > .5 ? C.up : chg < -.5 ? C.down : C.muted;
+    rctx.fillText(fr.idle || `${chg >= 0 ? '+' : '−'}${money(Math.abs(chg))}  ${pctStr(st.chgP)}`, cx, cy + rIn * .2);
+    rctx.fillStyle = C.muted; rctx.font = `400 ${font * .8}px ${MONO}`;
     const hi = S.hot >= 0 ? S.hot : st.top >= 0 ? st.top : S.to.best;
-    const foot = hi >= 0
-      ? `${M.tickers[hi]} ${money(st.val[hi])} \u00b7 ${(st.w[hi] * 100).toFixed(1)}% of acct`
-      : `Day ${d + 1} of ${M.dates.length}`;
-    rctx.fillText(foot, cx, cy + rIn * .46);
+    rctx.fillText(hi >= 0 ? `${fr.tickers[hi]} ${money(st.val[hi])} · ${(st.w[hi] * 100).toFixed(1)}% of acct` : fr.foot, cx, cy + rIn * .46);
   }
 
   function hitTest(ev) {
@@ -572,137 +602,251 @@
   ring.addEventListener('click', e => setHot(hitTest(e)));
 
   // ---------- movers table ----------
-  const rows = document.getElementById('rows');
+  const rows = $('rows');
   function renderTable() {
-    const d = S.day;
-    const idx = M.tickers.map((_, i) => i).filter(i => M.values[d][i] > 0).sort((a, b) => M.pct[d][b] - M.pct[d][a]);
-    const maxAbs = Math.max(BAR_SCALE * .4, ...idx.map(i => Math.abs(M.pct[d][i])));
+    const fr = S.frame;
+    const idx = fr.tickers.map((_, i) => i).filter(i => fr.val[i] > 0).sort((a, b) => fr.pct[b] - fr.pct[a]);
+    const maxAbs = Math.max(BAR_SCALE * .4, ...idx.map(i => Math.abs(fr.pct[i])));
     rows.innerHTML = idx.map(i => {
-      const p = M.pct[d][i], cls = p > .005 ? 'up' : p < -.005 ? 'dn' : 'flat';
+      const p = fr.pct[i], cls = p > .005 ? 'up' : p < -.005 ? 'dn' : 'flat';
       const w = Math.round(Math.abs(p) / maxAbs * 36);
       return `<tr class="row${S.hot === i ? ' hot' : ''}" data-i="${i}">
-        <td><span class="tk ${cls}">${M.tickers[i]}</span></td>
-        <td>${money(M.values[d][i])}</td>
-        <td>${(M.weights[d][i] * 100).toFixed(1)}%</td>
+        <td><span class="tk ${cls}">${fr.tickers[i]}</span></td>
+        <td>${money(fr.val[i])}</td>
+        <td>${(fr.w[i] * 100).toFixed(1)}%</td>
         <td class="${cls}"><span class="mbar" style="width:${w}px;background:currentColor"></span>${pctStr(p)}</td></tr>`;
     }).join('');
-    document.getElementById('asof').textContent = M.dates[d];
-    document.getElementById('dcur').textContent = `Day ${d + 1} of ${M.dates.length}`;
+    $('asof').textContent = fr.asof;
   }
   rows.addEventListener('mouseover', e => { const tr = e.target.closest('tr.row'); if (tr) setHot(+tr.dataset.i); });
   rows.addEventListener('mouseleave', () => setHot(-1));
 
-  // ---------- sparkline scrubber ----------
-  const spark = document.getElementById('spark'), sctx = spark.getContext('2d');
-  const scrub = document.getElementById('scrub');
+  // ---------- value line: intraday in live, day-by-day in replay ----------
+  const spark = $('spark'), sctx = spark.getContext('2d'), scrub = $('scrub');
   function drawSpark() {
+    if (!S.frame) return;
     const dpr = window.devicePixelRatio || 1, w = spark.clientWidth, h = spark.clientHeight;
     if (spark.width !== w * dpr) { spark.width = w * dpr; spark.height = h * dpr; }
     sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     sctx.clearRect(0, 0, w, h);
-    const T = M.totals, lo = Math.min(...T), hi = Math.max(...T), pad = 4;
-    const X = i => pad + i / (T.length - 1) * (w - pad * 2);
+    const pad = 4;
+    let pts, xs, cursor, base = null;
+    if (S.mode === 'live') {
+      // x = minutes since 9:30 ET across the 390-minute session
+      pts = L.session.map(p => p[1]); xs = L.session.map(p => p[0] / 390);
+      // points stamped outside market hours (e.g. testing with QUOTES_PROVIDER=sim at night): spread them out
+      if (pts.length > 1 && xs[xs.length - 1] - xs[0] < 1 / 390) xs = pts.map((_, i) => i / (pts.length - 1));
+      base = L.prevTotal || null;
+      cursor = pts.length - 1;
+      $('d0').textContent = '9:30'; $('d1').textContent = '4:00';
+      $('dcur').textContent = L.sim ? 'Simulated session' : L.open ? 'Today' : 'Last session';
+    } else {
+      pts = M.totals; xs = pts.map((_, i) => i / (pts.length - 1)); cursor = S.day;
+      $('d0').textContent = M.dates[0]; $('d1').textContent = M.dates[M.dates.length - 1];
+      $('dcur').textContent = `Day ${S.day + 1} of ${M.dates.length}`;
+    }
+    if (!pts.length) return;
+    const all = base ? pts.concat([base]) : pts;
+    const lo = Math.min(...all), hi = Math.max(...all);
+    const X = f => pad + f * (w - pad * 2);
     const Y = v => h - pad - (v - lo) / (hi - lo || 1) * (h - pad * 2);
     sctx.strokeStyle = C.rule; sctx.lineWidth = 1;
     for (let k = 0; k <= 2; k++) { const y = pad + k * (h - pad * 2) / 2; sctx.beginPath(); sctx.moveTo(0, y); sctx.lineTo(w, y); sctx.stroke(); }
-    sctx.beginPath();
-    T.forEach((v, i) => i ? sctx.lineTo(X(i), Y(v)) : sctx.moveTo(X(i), Y(v)));
-    sctx.lineTo(X(T.length - 1), h); sctx.lineTo(X(0), h); sctx.closePath();
+    if (base) { // previous close
+      sctx.save(); sctx.setLineDash([3, 3]); sctx.strokeStyle = C.faint;
+      sctx.beginPath(); sctx.moveTo(0, Y(base)); sctx.lineTo(w, Y(base)); sctx.stroke(); sctx.restore();
+    }
+    const path = upto => { sctx.beginPath(); for (let i = 0; i <= upto; i++) i ? sctx.lineTo(X(xs[i]), Y(pts[i])) : sctx.moveTo(X(xs[i]), Y(pts[i])); };
+    path(pts.length - 1);
+    sctx.lineTo(X(xs[pts.length - 1]), h); sctx.lineTo(X(xs[0]), h); sctx.closePath();
     sctx.save(); sctx.globalAlpha = .1; sctx.fillStyle = C.accent; sctx.fill(); sctx.restore();
-    sctx.beginPath();
-    T.forEach((v, i) => i ? sctx.lineTo(X(i), Y(v)) : sctx.moveTo(X(i), Y(v)));
-    sctx.strokeStyle = C.faint; sctx.lineWidth = 1.2; sctx.stroke();
-    // played portion brighter
-    sctx.beginPath();
-    for (let i = 0; i <= S.day; i++) i ? sctx.lineTo(X(i), Y(T[i])) : sctx.moveTo(X(i), Y(T[i]));
-    sctx.strokeStyle = C.accent; sctx.lineWidth = 1.8; sctx.stroke();
-    const x = X(S.day);
+    path(pts.length - 1); sctx.strokeStyle = C.faint; sctx.lineWidth = 1.2; sctx.stroke();
+    path(cursor); sctx.strokeStyle = C.accent; sctx.lineWidth = 1.8; sctx.stroke();
+    const x = X(xs[cursor]);
     sctx.strokeStyle = C.ink; sctx.lineWidth = 1;
     sctx.beginPath(); sctx.moveTo(x, 0); sctx.lineTo(x, h); sctx.stroke();
     sctx.fillStyle = C.accent;
-    sctx.beginPath(); sctx.arc(x, Y(T[S.day]), 3, 0, Math.PI * 2); sctx.fill();
+    sctx.beginPath(); sctx.arc(x, Y(pts[cursor]), 3, 0, TAU); sctx.fill();
     sctx.font = `11px ${MONO}`;
-    const tag = (txt, y, base) => {
-      sctx.textBaseline = base; sctx.textAlign = 'left';
+    const tag = (txt, y, b) => {
+      sctx.textBaseline = b; sctx.textAlign = 'left';
       const tw = sctx.measureText(txt).width;
-      sctx.fillStyle = C.bgc; sctx.fillRect(pad, base === 'top' ? y : y - 13, tw + 6, 13);
+      sctx.fillStyle = C.bgc; sctx.fillRect(pad, b === 'top' ? y : y - 13, tw + 6, 13);
       sctx.fillStyle = C.muted; sctx.fillText(txt, pad + 3, y);
     };
     tag('HI ' + money(hi), 0, 'top');
     tag('LO ' + money(lo), h, 'bottom');
   }
   function sparkPick(e) {
+    if (S.mode !== 'replay') return;
     const r = spark.getBoundingClientRect();
-    const i = Math.round((e.clientX - r.left - 4) / (r.width - 8) * (M.dates.length - 1));
-    stop(); goTo(i, false);
+    stop(); goTo(Math.round((e.clientX - r.left - 4) / (r.width - 8) * (M.dates.length - 1)), true);
   }
   let dragging = false;
-  spark.addEventListener('pointerdown', e => { dragging = true; spark.setPointerCapture(e.pointerId); sparkPick(e); });
+  spark.addEventListener('pointerdown', e => { if (S.mode !== 'replay') return; dragging = true; spark.setPointerCapture(e.pointerId); sparkPick(e); });
   spark.addEventListener('pointermove', e => { if (dragging) sparkPick(e); });
   spark.addEventListener('pointerup', () => { dragging = false; });
-  scrub.addEventListener('input', () => { stop(); goTo(+scrub.value, true); });
+  scrub.addEventListener('input', () => { stop(); goTo(+scrub.value); });
 
-  // ---------- playback ----------
-  const playBtn = document.getElementById('play');
+  // ---------- daily replay ----------
+  const playBtn = $('play');
+  function goTo(d, instant = false) {
+    d = Math.max(0, Math.min(M.dates.length - 1, d));
+    S.day = d; scrub.value = d;
+    setFrame(replayFrame(d), instant);
+  }
+  function setSpeed() { S.ks = S.mode === 'replay' ? Math.min(12, Math.max(.6, Math.pow(700 / +$('speed').value, 2))) : 1; }
   function step() {
     if (S.day >= M.dates.length - 1) { stop(); return; }
     goTo(S.day + 1);
-    S.timer = setTimeout(step, +document.getElementById('speed').value);
+    S.timer = setTimeout(step, +$('speed').value);
   }
   function play() {
-    if (S.day >= M.dates.length - 1) goTo(0, false);
+    if (S.day >= M.dates.length - 1) goTo(0, true);
     S.playing = true; playBtn.textContent = 'Pause';
     clearTimeout(S.timer);
     S.timer = setTimeout(step, 300);
   }
   function stop() { S.playing = false; clearTimeout(S.timer); playBtn.textContent = 'Play'; }
   playBtn.addEventListener('click', () => S.playing ? stop() : play());
-  document.getElementById('prev').addEventListener('click', () => { stop(); goTo(S.day - 1); });
-  document.getElementById('next').addEventListener('click', () => { stop(); goTo(S.day + 1); });
-  document.getElementById('layout').addEventListener('change', () => goTo(S.day));
+  $('prev').addEventListener('click', () => { stop(); goTo(S.day - 1); });
+  $('next').addEventListener('click', () => { stop(); goTo(S.day + 1); });
+  $('speed').addEventListener('change', setSpeed);
+  $('layout').addEventListener('change', () => { if (S.frame) setFrame(S.frame); });
   document.addEventListener('keydown', e => {
-    if (e.target.matches('input, select, button')) return;
+    if (S.mode !== 'replay' || e.target.matches('input, select, button')) return;
     if (e.key === ' ') { e.preventDefault(); S.playing ? stop() : play(); }
     else if (e.key === 'ArrowRight') { stop(); goTo(S.day + 1); }
     else if (e.key === 'ArrowLeft') { stop(); goTo(S.day - 1); }
   });
 
-  // ---------- load ----------
-  function load(raw) {
-    stop();
-    build(raw);
-    S.cur = null; S.hot = -1;
-    scrub.max = M.dates.length - 1;
-    document.getElementById('d0').textContent = M.dates[0];
-    document.getElementById('d1').textContent = M.dates[M.dates.length - 1];
-    document.getElementById('src').innerHTML = raw.sample
-      ? '<b>Sample portfolio</b> · not your data'
-      : `<b>Your CSV</b> · ${M.tickers.length} holdings · ${M.dates.length} days`;
-    goTo(0, false);
+  // ---------- live feed ----------
+  // With brokerage_server.py running, /api/portfolio returns holdings + latest quotes.
+  // Anywhere else (a file, a preview) the page runs a simulated session instead.
+  let server = false, pollTimer = 0;
+  async function fetchJSON(url, ms = 4000) {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+    try { const r = await fetch(url, { cache: 'no-store', signal: ctl.signal }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return await r.json(); }
+    finally { clearTimeout(t); }
   }
-  document.getElementById('csv').addEventListener('change', e => {
+  async function pollServer() {
+    try {
+      const j = await fetchJSON('api/portfolio');
+      L.err = j.error || null; L.open = j.market_open; L.asof = j.asof; L.source = j;
+      L.session = (j.session || []).map(([ms, v]) => [minutesSinceOpen(ms), v]);
+      if (j.holdings && j.holdings.length && S.mode === 'live') setFrame(liveFrame(j.holdings));
+    } catch (e) { L.err = 'Lost connection to brokerage_server.py (' + e.message + ')'; }
+    liveStatus();
+    pollTimer = setTimeout(pollServer, (L.source?.page_poll_seconds || 5) * 1000);
+  }
+  function minutesSinceOpen(ms) {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hourCycle: 'h23', timeZone: 'America/New_York' })
+      .formatToParts(new Date(ms)).map(x => [x.type, x.value]));
+    return Math.max(0, Math.min(390, (+p.hour * 60 + +p.minute) - 570));
+  }
+
+  // Simulated session: 1 real second = 1 market minute, prices random-walk from the last sample close.
+  function startSim() {
+    const hist = sampleHistory(), last = hist.prices[hist.prices.length - 1];
+    const rnd = mulberry(Date.now() & 0xffff);
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(TAU * rnd());
+    const sim = L.sim = { minute: 0, prev: last.slice(), px: last.slice(), closedFor: 0 };
+    const minuteStep = () => {
+      const mkt = gauss() * .009 / Math.sqrt(390);
+      sim.px = sim.px.map((p, i) => p * (1 + BOOK[i][4] * mkt + gauss() * BOOK[i][3] * .8 / Math.sqrt(390)));
+      sim.minute++;
+    };
+    const holdings = () => BOOK.map((b, i) => ({ ticker: b[0], shares: b[1], price: sim.px[i], prev_close: sim.prev[i] }));
+    const stamp = () => Date.UTC(2026, 8, 28, 13, 30) + sim.minute * 60000; // 9:30 ET = 13:30 UTC
+    const record = () => L.session.push([sim.minute, holdings().reduce((a, x) => a + x.shares * x.price, 0)]);
+    L.session = []; record();
+    for (let k = 0; k < 60; k++) { minuteStep(); record(); } // open the page an hour into the session
+    const tick = () => {
+      if (sim.minute >= 390) {
+        L.open = false;
+        if (++sim.closedFor > 6) { sim.prev = sim.px.slice(); sim.minute = 0; sim.closedFor = 0; L.session = []; record(); }
+      } else { L.open = true; minuteStep(); record(); }
+      L.asof = stamp();
+      if (S.mode === 'live') setFrame(liveFrame(holdings()));
+      liveStatus();
+    };
+    L.open = true; L.asof = stamp();
+    setFrame(liveFrame(holdings()), true);
+    liveStatus();
+    pollTimer = setInterval(tick, 1000);
+  }
+  function liveStatus() {
+    srcChip();
+    const el = $('liveStatus'), txt = $('liveText');
+    el.hidden = S.mode !== 'live';
+    el.classList.toggle('err', !!L.err);
+    el.classList.toggle('on', !L.err && L.open);
+    if (L.err) { txt.textContent = L.err; return; }
+    if (L.sim) { txt.textContent = L.open ? `Simulated session at 60× speed · ${etClock(L.asof)} ET` : 'Simulated session · market closed, reopening shortly'; return; }
+    const j = L.source || {};
+    const ago = j.quotes_at ? Math.max(0, Math.round((Date.now() - j.quotes_at) / 1000)) + 's ago' : '—';
+    txt.textContent = `${L.open ? 'Market open' : 'Market closed'} · quotes ${ago} via ${j.provider_label || j.provider || '?'}`;
+  }
+
+  // ---------- modes ----------
+  function setMode(mode) {
+    stop();
+    S.mode = mode; S.cur = null; S.to = null; S.hot = -1;
+    $('mLive').setAttribute('aria-pressed', mode === 'live');
+    $('mReplay').setAttribute('aria-pressed', mode === 'replay');
+    $('replayCtl').hidden = mode !== 'replay';
+    scrub.hidden = mode !== 'replay';
+    spark.style.cursor = mode === 'replay' ? 'pointer' : 'default';
+    setSpeed();
+    liveStatus();
+    srcChip();
+    if (mode === 'replay') { scrub.max = M.dates.length - 1; goTo(0, true); if (!reduced) play(); }
+    else if (L.sim) setFrame(liveFrame(BOOK.map((b, i) => ({ ticker: b[0], shares: b[1], price: L.sim.px[i], prev_close: L.sim.prev[i] }))), true);
+    else if (L.source?.holdings?.length) setFrame(liveFrame(L.source.holdings), true);
+  }
+  function srcChip() {
+    const el = $('src');
+    if (S.mode === 'replay') el.innerHTML = M.sample ? '<b>Sample history</b> · not your data'
+      : `<b>${M.fromServer ? 'Saved closes' : 'Your CSV'}</b> · ${M.tickers.length} holdings · ${M.dates.length} days`;
+    else if (L.sim) el.innerHTML = '<b>Simulated live session</b> · sample portfolio';
+    else if (L.source) el.innerHTML = `<b>Live</b> · ${L.source.holdings_label || 'your holdings'}`;
+    else el.innerHTML = '<b>Live</b> · connecting';
+  }
+  $('mLive').addEventListener('click', () => setMode('live'));
+  $('mReplay').addEventListener('click', () => setMode('replay'));
+  $('csv').addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return;
     const rd = new FileReader();
     rd.onload = () => {
-      try { load(parseCSV(rd.result)); if (!reduced) play(); }
-      catch (err) { document.getElementById('src').innerHTML = `<span class="err">CSV not loaded: ${err.message}</span>`; }
+      try { buildReplay(parseCSV(rd.result)); setMode('replay'); }
+      catch (err) { $('src').innerHTML = `<span class="err">CSV not loaded: ${err.message}</span>`; }
     };
     rd.readAsText(f);
     e.target.value = '';
   });
 
-  function relayout() { readTokens(); sizeRing(); drawRing(); if (M) drawSpark(); }
+  // ---------- boot ----------
+  function relayout() { readTokens(); sizeRing(); drawRing(); drawSpark(); }
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', relayout);
   new MutationObserver(relayout).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   new ResizeObserver(relayout).observe(ring);
-  readTokens();
-  sizeRing();
-  load(sampleData());
-  // Open on a full picture; autoplay from day 1 once fonts are in.
-  (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => {
-    relayout();
-    if (!reduced) { goTo(0, false); play(); } else goTo(M.dates.length - 1, false);
-  });
+  readTokens(); sizeRing();
+  buildReplay(sampleHistory());
+
+  (async () => {
+    try {
+      const j = await fetchJSON('api/portfolio', 2500);
+      if (!j || !Array.isArray(j.holdings)) throw new Error('not the brokerage server');
+      server = true;
+      try { // saved daily closes from the server, if there are enough to replay
+        const r = await fetch('api/history', { cache: 'no-store' });
+        if (r.ok) { const raw = parseCSV(await r.text()); buildReplay(raw); M.fromServer = true; }
+      } catch (_) { /* keep sample history */ }
+    } catch (_) { server = false; }
+    setMode('live');
+    if (server) pollServer(); else startSim();
+    (document.fonts ? document.fonts.ready : Promise.resolve()).then(relayout);
+  })();
 })();
 </script>
 </body>
