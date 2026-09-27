@@ -204,8 +204,10 @@ filled in and that you're a member of that league.
 `brokerage_ring.html` is a standalone page that replays a
 brokerage account day by day. Each holding is a slice of a ring sized by its share
 of the account, with its ticker written around the outside. A bar on each slice
-shows that day's move: outward and green when up, inward and red when down. The
-ring turns so the day's biggest mover sits at 12 o'clock.
+shows that day's move: outward and green when up, inward and red when down. By
+default the gainers snap together at 12 o'clock like magnets, strongest in the
+middle, while the biggest losers sink to 6 o'clock. The layout menu can instead
+keep a fixed order or turn the day's biggest mover to 12 o'clock.
 
 Open the file directly in a browser. It starts with a sample portfolio. **Load CSV**
 takes a header row of `date,ticker,value` or `date,ticker,shares,price`, one row per
