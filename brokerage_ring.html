@@ -223,7 +223,7 @@
         <p><b>Order</b> runs clockwise from the lowest move to the highest. Gainers pull together around 12 o’clock and losers are pushed away. Two tickers only trade places once one clearly leads, so near-ties don’t flicker. Dotted rings mark <span id="guides">±2.5% and ±5%</span>.</p>
         <p><b>% change</b> shows each holding’s own move. <b>$ impact</b> shows what it did to your account, so a small move in a big position outweighs a big move in a small one.</p>
         <p><b>Thickness</b> is trading volume: today’s shares against a normal day at the same time (20-day average, weighted for the busier open and close).</p>
-        <p><b>Live</b> follows prices through the day; drag the line under the ring to rewind today, and the center compares your day with the S&amp;P 500 (SPY). Pills pulse when a holding flips between up and down or its volume passes 2×. Run <code>brokerage_server.py</code> for your holdings and real quotes; without it the page plays a simulated day.</p>
+        <p><b>Live</b> follows prices through the day; drag the line under the ring to rewind today, and the center compares your day with the S&amp;P 500 (SPY). A slice and its pill pulse when the holding changes shade (including flipping between up and down), and the pill pulses when volume passes 2×. Run <code>brokerage_server.py</code> for your holdings and real quotes; without it the page plays a simulated day.</p>
         <p><b>Daily replay</b> steps through closing values. <b>Load CSV</b> with <code>date,ticker,value</code> or <code>date,ticker,shares,price</code> (optional <code>volume</code>; a <code>CASH</code> row is cash; <code>$SPY</code> rows are the benchmark). The file stays in your browser.</p>
       </div>
     </aside>
@@ -242,9 +242,20 @@
   }
   // Shade for a move, in five fixed steps like a stock heatmap: the same shade always means the
   // same size of move. Step limits come from the measure (see MEASURES.steps).
-  function shade(up, absMove, steps) {
-    const level = steps.filter(lim => absMove >= lim).length; // 0..4
-    return (up ? C.upSteps : C.downSteps)[level];
+  // A level is the signed step: +1..+5 for gains, -1..-5 for losses, 0 for flat or cash.
+  const shadeOf = lv => lv > 0 ? C.upSteps[lv - 1] : lv < 0 ? C.downSteps[-lv - 1] : null;
+  // Step for a move. A holding sitting right on a step boundary would flip colour (and pulse)
+  // on every quote, so it keeps its previous step until it is clearly past the boundary.
+  function levelOf(key, pct, absMove, cash, M_) {
+    if (cash || Math.abs(pct) <= .005) return 0;
+    const sgn = pct > 0 ? 1 : -1;
+    let lv = M_.steps.filter(lim => absMove >= lim).length + 1;
+    const prev = S.levels.get(key);
+    if (prev && Math.sign(prev) === sgn && Math.abs(Math.abs(prev) - lv) === 1) {
+      const boundary = M_.steps[Math.min(Math.abs(prev), lv) - 1];
+      if (Math.abs(absMove - boundary) < M_.margin) lv = Math.abs(prev);
+    }
+    return sgn * lv;
   }
   // readable text on a shaded fill: dark on light fills, white on dark ones
   function textOn(fill) {
@@ -260,9 +271,9 @@
   // another before they swap places on the ring (so near-ties don't flicker).
   //   pct: the holding's own % move.  usd: its dollar gain/loss as points of the whole account.
   // `steps` are where each shade begins.
-  const MEASURES = { pct: { scale: 5, hyst: 0.1, steps: [.25, .5, 1, 2], guides: '±2.5% and ±5%',
+  const MEASURES = { pct: { scale: 5, hyst: 0.1, steps: [.25, .5, 1, 2], margin: .03, guides: '±2.5% and ±5%',
                             shadeNote: 'Shade steps at 0.25, 0.5, 1 and 2%' },
-                     usd: { scale: 0.5, hyst: 0.01, steps: [.025, .05, .1, .2], guides: '±0.25% and ±0.5% of the account',
+                     usd: { scale: 0.5, hyst: 0.01, steps: [.025, .05, .1, .2], margin: .003, guides: '±0.25% and ±0.5% of the account',
                             shadeNote: 'Shade steps at 0.025, 0.05, 0.1 and 0.2% of the account' } };
   const OTHER_MAX_W = 0.01;  // positions under 1% of the account are grouped into "Other"
   const PULSE_MS = 1800;
@@ -451,7 +462,7 @@
   // ---------- items -> frame ----------
   const S = { mode: 'live', measure: 'pct', cur: null, to: null, vel: null, frame: null, view: null, hot: null,
               day: 0, playing: false, timer: 0, ks: 1, rank: null, keyOrder: [], expandOther: false,
-              pulses: {}, prevMarks: null, rewind: null };
+              pulses: {}, prevMarks: null, rewind: null, levels: new Map() };
   function buildFrame(view) {
     const { items, ctx } = view;
     const M_ = MEASURES[S.measure], usd = S.measure === 'usd';
@@ -477,10 +488,14 @@
     ring.filter(x => !seen.has(x.key)).sort((a, b) => b.val - a.val).forEach(x => S.keyOrder.push(x.key));
     const pos = new Map(S.keyOrder.map((k, i) => [k, i]));
     ring = ring.slice().sort((a, b) => pos.get(a.key) - pos.get(b.key));
+    for (const x of items.concat(ring.filter(x => x.members))) {
+      x.level = levelOf(x.key, x.pct, Math.abs(x.m), x.cash, M_);
+      S.levels.set(x.key, x.level);
+    }
     const col = k => ring.map(x => x[k]);
     return {
       ...ctx, items, measure: S.measure, scale: M_.scale, hyst: M_.hyst, steps: M_.steps,
-      keys: col('key'), labels: ring.map(x => x.label || x.key), members: ring.map(x => x.members || null),
+      level: col('level'), keys: col('key'), labels: ring.map(x => x.label || x.key), members: ring.map(x => x.members || null),
       cash: col('cash'), ext: col('ext'), val: col('val'), w: col('w'), pct: col('pct'), d: col('d'), m: col('m'),
       rvol: col('rvol'), total, prevTotal, chg: total - prevTotal, chgP: prevTotal ? (total / prevTotal - 1) * 100 : 0
     };
@@ -627,7 +642,8 @@
   // In live mode, a pill pulses when its holding crosses between up and down on the day,
   // or when its volume climbs past 2x normal. Grouped holdings pulse the Other slice.
   function markEvents(fr, instant) {
-    const marks = new Map(fr.items.map(x => [x.key, { up: x.pct > .005, dn: x.pct < -.005, hot: (x.rvol || 0) >= 2 }]));
+    const marks = new Map(fr.items.concat(fr.members.some(Boolean) ? [{ key: '__other', level: fr.level[fr.keys.indexOf('__other')] }] : [])
+      .map(x => [x.key, { level: x.level, hot: (x.rvol || 0) >= 2 }]));
     const prev = S.prevMarks;
     S.prevMarks = marks;
     if (!prev || instant || S.mode !== 'live' || S.rewind != null) return;
@@ -635,12 +651,12 @@
     for (const [k, mk] of marks) {
       const p = prev.get(k);
       if (!p) continue;
-      if ((mk.up && p.dn) || (mk.dn && p.up)) S.pulses[k] = { t: now, color: mk.up ? 'up' : 'down' };
-      else if (mk.hot && !p.hot) S.pulses[k] = { t: now, color: 'accent' };
+      if (mk.level !== p.level && mk.level !== 0) S.pulses[k] = { t: now, color: shadeOf(mk.level), slice: true };
+      else if (mk.hot && !p.hot) S.pulses[k] = { t: now, color: C.accent, slice: false };
     }
   }
   function pulseFor(fr, i) {
-    const keys = fr.members[i] || [fr.keys[i]];
+    const keys = fr.members[i] ? fr.members[i].concat(['__other']) : [fr.keys[i]];
     let best = null;
     for (const k of keys) { const p = S.pulses[k]; if (p && (!best || p.t > best.t)) best = p; }
     return best && performance.now() - best.t < PULSE_MS ? best : null;
@@ -695,6 +711,7 @@
       rctx.beginPath(); rctx.arc(cx, cy, rIn, 0, TAU); rctx.stroke(); rctx.restore();
     }
     const drawOrder = [...Array(n).keys()].sort((x, y) => st.m[x] - st.m[y]);
+    const now = performance.now();
     for (const i of drawOrder) {
       const [a0, a1] = mids[i];
       if (a1 - a0 < 1e-4) continue;
@@ -702,12 +719,24 @@
       const hot = hotI === i, top = st.top === i;
       const s0 = a0 + gap / 2, s1 = Math.max(s0, a1 - gap / 2);
       const dir = fr.cash[i] ? C.faint : p > .005 ? C.up : p < -.005 ? C.down : C.flat;
-      const fillC = Math.abs(p) > .005 && !fr.cash[i] ? shade(p > 0, Math.abs(st.m[i]), fr.steps) : null;
+      const fillC = shadeOf(fr.level[i]);
       rctx.save();
       if (fr.ext[i]) rctx.globalAlpha = .6; // extended-hours prices: dimmed
       band(inner[i], rOut, s0, s1);
       rctx.fillStyle = C.slice; rctx.fill();
       if (fillC) { rctx.fillStyle = fillC; rctx.fill(); } // the whole slice takes its step's shade
+      const pz = pulseFor(fr, i);
+      if (pz && pz.slice) { // changed colour: a quick flash, then a halo in the new shade that spreads and fades
+        const k = (now - pz.t) / PULSE_MS, o = 2 + k * s * .025;
+        rctx.save();
+        rctx.globalAlpha = .5 * (1 - k) * (1 - k);
+        rctx.fillStyle = '#ffffff'; rctx.fill();
+        rctx.globalAlpha = .9 * (1 - k);
+        band(inner[i] - o, rOut + o, s0 - o / rOut, s1 + o / rOut);
+        rctx.lineWidth = 2.5; rctx.strokeStyle = pz.color; rctx.stroke();
+        rctx.restore();
+        band(inner[i], rOut, s0, s1); // restore the slice path for the outline below
+      }
       if (hot || top) { rctx.lineWidth = 2; rctx.strokeStyle = C.accent; rctx.stroke(); }
       // move bar
       if (!fr.cash[i] && Math.abs(p) > .005) {
@@ -742,7 +771,6 @@
     // labels: ticker in a pill + the move, radial, flipped on the left half so they read left-to-right
     rctx.textBaseline = 'middle';
     const padX = font * .55, pillH = font * 1.6, gapX = font * .45;
-    const now = performance.now();
     const labelAt = spreadLabels(mids, fr, hotI, pillH * 1.1 / rLab);
     for (const i of drawOrder) {
       if (!labelAt.has(i)) continue;
@@ -773,7 +801,7 @@
       const pillX = left ? -(pw + (cash ? 0 : gapX) + pillW) : pw + (cash ? 0 : gapX);
       // pill: green when up on the day, red when down, neutral when flat or cash
       // pill: stepped green when up, red when down (paler = smaller move), neutral when flat or cash
-      const dirC = cash || Math.abs(p) <= .005 ? null : shade(p > 0, Math.abs(st.m[i]), fr.steps);
+      const dirC = shadeOf(fr.level[i]);
       const pulse = pulseFor(fr, i);
       if (pulse) { // expanding ring that fades out
         const k = (now - pulse.t) / PULSE_MS, o = 2 + k * font * 1.4;
@@ -781,7 +809,7 @@
         rctx.globalAlpha = (1 - k) * .9;
         rctx.beginPath();
         rctx.roundRect(pillX - o, -pillH / 2 - o, pillW + o * 2, pillH + o * 2, pillH / 2 + o);
-        rctx.lineWidth = 2.5; rctx.strokeStyle = C[pulse.color]; rctx.stroke();
+        rctx.lineWidth = 2.5; rctx.strokeStyle = pulse.color; rctx.stroke();
         rctx.restore();
       }
       if (on) {
@@ -896,9 +924,9 @@
   });
 
   // ---------- movers table ----------
-  function pillStyle(x, scale) {
-    if (x.cash || Math.abs(x.pct) <= .005) return '';
-    const f = shade(x.pct > 0, Math.abs(x.m), S.frame.steps);
+  function pillStyle(x) {
+    const f = shadeOf(x.level);
+    if (!f) return '';
     return ` style="background:${f};border-color:${f};color:${textOn(f)}"`;
   }
   const rows = $('rows');
@@ -914,7 +942,7 @@
       const flash = S.pulses[x.key] && now - S.pulses[x.key].t < PULSE_MS ? ' flash' : '';
       const grouped = fr.members.some(g => g && g.includes(x.key)) ? ' grouped' : '';
       return `<tr class="row${S.hot === x.key ? ' hot' : ''}${flash}${grouped}" data-k="${x.key}">
-        <td><span class="tk${x.ext ? ' ext' : ''}"${pillStyle(x, fr.scale)}>${x.key}</span></td>
+        <td><span class="tk${x.ext ? ' ext' : ''}"${pillStyle(x)}>${x.key}</span></td>
         <td>${money(x.val)}</td>
         <td>${(x.w * 100).toFixed(1)}%</td>
         <td class="vol${x.rvol >= 1.5 ? ' hi' : ''}">${x.rvol != null ? x.rvol.toFixed(1) + '×' : '—'}</td>
@@ -1060,7 +1088,7 @@
   $('next').addEventListener('click', () => { stop(); goTo(S.day + 1); });
   $('speed').addEventListener('change', setSpeed);
   $('layout').addEventListener('change', () => { S.rank = null; reshow(); });
-  $('measure').addEventListener('change', () => { S.measure = $('measure').value; S.rank = null; reshow(); });
+  $('measure').addEventListener('change', () => { S.measure = $('measure').value; S.rank = null; S.levels = new Map(); S.prevMarks = null; reshow(); });
   document.addEventListener('keydown', e => {
     if (e.target.matches('input, select, button')) return;
     if (S.mode === 'replay') {
@@ -1198,7 +1226,7 @@
   // ---------- modes ----------
   function setMode(mode) {
     stop();
-    Object.assign(S, { mode, cur: null, to: null, hot: null, rank: null, keyOrder: [], prevMarks: null, rewind: null, pulses: {} });
+    Object.assign(S, { mode, cur: null, to: null, hot: null, rank: null, keyOrder: [], prevMarks: null, rewind: null, pulses: {}, levels: new Map() });
     $('mLive').setAttribute('aria-pressed', mode === 'live');
     $('mReplay').setAttribute('aria-pressed', mode === 'replay');
     $('replayCtl').hidden = mode !== 'replay';

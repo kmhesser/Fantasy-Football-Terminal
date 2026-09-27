@@ -221,8 +221,10 @@ under the ring explains each mark.
 - **Cash** is a neutral slice. Positions under 1% are grouped as **Other**; click
   it (or "Show separately") to break it out.
 - **Benchmark:** the center shows SPY's day and how far ahead or behind you are.
-- **Pulses:** a pill pulses when its holding flips between up and down, or its
-  volume passes 2x normal.
+- **Pulses:** when a holding changes shade (including flipping between up and
+  down) its slice flashes and a halo in the new shade spreads out, and its pill
+  pulses. A pill also pulses when volume passes 2x normal. A holding right on a
+  step boundary keeps its shade until it's clearly past it, so it doesn't flicker.
 
 **Live** follows prices through the trading day with spring physics, so small
 price changes show up as a gentle drift. Drag the line under the ring (or use
