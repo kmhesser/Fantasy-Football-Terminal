@@ -226,6 +226,21 @@ under the ring explains each mark.
   pulses. A pill also pulses when volume passes 2x normal. A holding right on a
   step boundary keeps its shade until it's clearly past it, so it doesn't flicker.
 
+- **Indicator** menu (one at a time), worked out from today's minute-by-minute
+  prices in live mode and from daily closes in replay:
+  - *Momentum tails:* a comet tail behind each pill, longer = faster move over the
+    last 15 minutes (5 days in replay).
+  - *Day range:* a notch across each slice, inner edge = today's low, outer = high
+    (20-day range in replay).
+  - *VWAP distance:* a notch against a dashed middle line at VWAP, edges ±1%
+    (20-day volume-weighted average in replay).
+  - *Signal badges:* ▲/▼ when price recently crossed VWAP, ◆ RSI 70+, ◇ RSI 30 or less.
+  - *Alert shapes:* the pill turns pointed when volume is 2x normal and the move is 1%+.
+  - *Breadth dial:* a gauge in the center, holdings trading above VWAP.
+  - *Custom rule:* type a condition using `pct usd rvol weight mom range vwap rsi
+    streak spy` (e.g. `pct - spy > 1`, `rsi < 30 && rvol > 1.5`); matching holdings
+    get a ★ badge and a pointed pill.
+
 **Live** follows prices through the trading day with spring physics, so small
 price changes show up as a gentle drift. Drag the line under the ring (or use
 the arrow keys) to rewind today; "Back to live" returns. Pre-market and

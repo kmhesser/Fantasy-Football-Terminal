@@ -137,6 +137,14 @@
               background: linear-gradient(to right, var(--down-5) 0 10%, var(--down-4) 10% 20%, var(--down-3) 20% 30%,
                 var(--down-2) 30% 40%, var(--down-1) 40% 50%, var(--up-1) 50% 60%, var(--up-2) 60% 70%,
                 var(--up-3) 70% 80%, var(--up-4) 80% 90%, var(--up-5) 90%); }
+  .sw-ind { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .rule { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12px; color: var(--muted); }
+  .rule label { font-weight: 500; color: var(--ink); }
+  .rule input { font: 13px var(--mono); color: var(--ink); background: var(--surface); border: 1px solid var(--rule);
+                border-radius: 6px; padding: 5px 8px; flex: 1 1 220px; min-width: 0; }
+  .rule input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .rule code { font: 11.5px var(--mono); color: var(--ink); }
+  .rule-err { color: var(--down); flex-basis: 100%; }
   .sw-ext { width: 18px; height: 10px; border: 1px dashed var(--ink); border-radius: 999px; opacity: .75; }
   .other-note { padding: 8px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); }
   .other-note button, #backLive { font-size: 12px; padding: 2px 8px; margin-left: 4px; }
@@ -171,6 +179,7 @@
         <span><i class="sw sw-bar"></i><span id="lgBar">Bar: % move today, out when up, in when down</span></span>
         <span><i class="sw sw-shade"></i><span id="lgShade">Shade steps at 0.25, 0.5, 1 and 2%</span></span>
         <span id="lgGap"><i class="sw sw-gap"></i>Gap: splits gainers (green arc) from losers</span>
+        <span id="lgInd" hidden><i class="sw sw-ind"></i><span id="lgIndText"></span></span>
         <span id="lgExt" hidden><i class="sw sw-ext"></i>Dashed pill: pre/after-hours price</span>
       </div>
 
@@ -194,6 +203,16 @@
           <option value="pct" selected>% change</option>
           <option value="usd">$ impact</option>
         </select>
+        <select id="indicator" aria-label="Indicator">
+          <option value="none" selected>No indicator</option>
+          <option value="momentum">Momentum tails</option>
+          <option value="range">Day range</option>
+          <option value="vwap">VWAP distance</option>
+          <option value="signals">Signal badges</option>
+          <option value="alerts">Alert shapes</option>
+          <option value="breadth">Breadth dial</option>
+          <option value="custom">Custom rule…</option>
+        </select>
         <select id="layout" aria-label="Ring layout">
           <option value="magnet" selected>Magnetize gainers</option>
           <option value="spin">Turn top mover to 12 o’clock</option>
@@ -202,6 +221,12 @@
         <span class="spacer"></span>
         <input type="file" id="csv" accept=".csv,text/csv">
         <label for="csv" class="filebtn" title="CSV with columns: date,ticker,value  or  date,ticker,shares,price">Load CSV</label>
+      </div>
+      <div class="rule" id="ruleBox" hidden>
+        <label for="customRule">Rule</label>
+        <input id="customRule" type="text" spellcheck="false" autocomplete="off" value="rvol > 1.5 && pct > 0.5">
+        <span class="rule-help">Uses <code>pct</code> <code>usd</code> <code>rvol</code> <code>weight</code> <code>mom</code> <code>range</code> <code>vwap</code> <code>rsi</code> <code>streak</code> <code>spy</code>, e.g. <code>pct - spy > 1</code> or <code>rsi < 30</code></span>
+        <span class="rule-err" id="ruleErr" hidden></span>
       </div>
       <div class="status" id="liveStatus"><span class="dot"></span><span id="liveText">Connecting…</span><button type="button" id="backLive" hidden>Back to live</button></div>
 
@@ -597,6 +622,7 @@
     }
     S.cur.mode = tg.mode; S.cur.top = tg.top;
     markEvents(fr, instant);
+    S.ind = computeIndicators(fr);
     renderTable(); drawSpark(); legend(); wake();
   }
   function reshow() { if (S.view) show(S.view); }
@@ -662,6 +688,102 @@
     return best && performance.now() - best.t < PULSE_MS ? best : null;
   }
 
+  // ---------- indicators ----------
+  // Each holding's price history up to the moment on screen: today's minute-by-minute prices in
+  // live (from the snapshots; a rewind stops at the rewound minute), or daily closes in replay.
+  const IND_WINDOWS = { live: { mom: 15, range: Infinity, vwap: Infinity, unit: 'min' },
+                        replay: { mom: 5, range: 20, vwap: 20, unit: 'day' } };
+  function seriesOf(key) {
+    if (S.mode === 'live') {
+      const upto = S.rewind != null ? S.rewind : L.snaps.length - 1;
+      const byMin = new Map();
+      let lastV = null;
+      for (let k = 0; k <= upto; k++) {
+        const sn = L.snaps[k], p = sn.px[key];
+        if (p == null) continue;
+        const v = sn.vol[key], dv = v != null && lastV != null ? Math.max(0, v - lastV) : 0;
+        if (v != null) lastV = v;
+        const bucket = Math.floor(sn.ms / 60000), e = byMin.get(bucket) || { px: p, vol: 0 };
+        e.px = p; e.vol += dv;
+        byMin.set(bucket, e);
+      }
+      const pts = [...byMin.values()];
+      return { px: pts.map(e => e.px), vol: pts.map(e => e.vol) };
+    }
+    const j = R.tickers.indexOf(key);
+    if (j < 0) return null;
+    const pts = [];
+    for (let d = 0; d <= S.day; d++) {
+      const p = R.prices[d][j];
+      if (isFinite(p) && p > 0) pts.push({ px: p, vol: R.volumes ? R.volumes[d][j] || 0 : 0 });
+    }
+    return { px: pts.map(e => e.px), vol: pts.map(e => e.vol) };
+  }
+  function measure(sr) {
+    const W = IND_WINDOWS[S.mode === 'live' ? 'live' : 'replay'];
+    const px = sr.px, n = px.length, p = px[n - 1];
+    if (n < 2) return null;
+    const sum = a => a.reduce((x, y) => x + y, 0);
+    const mom = (p / px[Math.max(0, n - 1 - W.mom)] - 1) * 100;
+    const rw = px.slice(-Math.min(n, W.range)), lo = Math.min(...rw), hi = Math.max(...rw);
+    const vp = px.slice(-Math.min(n, W.vwap)), vv = sr.vol.slice(-Math.min(n, W.vwap));
+    const sv = sum(vv), vwapPx = sv > 0 ? sum(vp.map((x, k) => x * vv[k])) / sv : sum(vp) / vp.length;
+    let rsi = null;
+    if (n >= 15) { // 14-period RSI
+      let g = 0, l = 0;
+      for (let k = n - 14; k < n; k++) { const d = px[k] - px[k - 1]; if (d > 0) g += d; else l -= d; }
+      rsi = l === 0 ? 100 : 100 - 100 / (1 + g / l);
+    }
+    let streak = 0;
+    for (let k = n - 1; k > 0; k--) {
+      const d = Math.sign(px[k] - px[k - 1]);
+      if (!d || (streak && Math.sign(streak) !== d)) break;
+      streak += d;
+    }
+    const recent = px.slice(-5).map(x => Math.sign(x - vwapPx)).filter(Boolean);
+    const cross = recent.length > 1 && recent[0] !== recent[recent.length - 1] ? recent[recent.length - 1] : 0;
+    return { mom, range: hi > lo ? (p - lo) / (hi - lo) : .5, vwap: (p / vwapPx - 1) * 100, rsi, streak, cross };
+  }
+  let customFn = null;
+  function compileRule() {
+    const src = $('customRule').value.trim();
+    try {
+      if (!/^[\w\s.+\-*/%<>=!&|()?:]*$/.test(src)) throw new Error('Only numbers, the names above and + - * / % < > = ! & | ( ) ? : are allowed.');
+      customFn = src ? new Function('pct', 'usd', 'rvol', 'weight', 'mom', 'range', 'vwap', 'rsi', 'streak', 'spy', `return (${src});`) : null;
+      $('ruleErr').hidden = true;
+    } catch (e) { customFn = null; $('ruleErr').hidden = false; $('ruleErr').textContent = 'Rule not valid: ' + e.message; }
+  }
+  // per ring slot: the indicator values, or null for cash, Other and holdings without history
+  function computeIndicators(fr) {
+    const kind = $('indicator').value;
+    if (kind === 'none') return null;
+    return fr.keys.map((k, i) => {
+      if (fr.cash[i] || fr.members[i]) return null;
+      const sr = seriesOf(k), m = sr && measure(sr);
+      if (!m) return null;
+      if (kind === 'custom' && customFn) {
+        try {
+          m.rule = !!customFn(fr.pct[i], fr.d[i], fr.rvol[i] ?? 1, fr.w[i] * 100, m.mom, m.range * 100, m.vwap,
+                              m.rsi ?? 50, m.streak, fr.bench ? fr.bench.pct : 0);
+        } catch (_) { m.rule = false; }
+      }
+      m.alert = (fr.rvol[i] || 0) >= 2 && Math.abs(fr.pct[i]) >= 1;
+      return m;
+    });
+  }
+  function indNote(fr, i) {
+    const m = S.ind && S.ind[i]; if (!m) return '';
+    const sgn = v => (v >= 0 ? '+' : '') + v.toFixed(2);
+    switch ($('indicator').value) {
+      case 'momentum': return ` \u00b7 mom ${sgn(m.mom)}%`;
+      case 'range': return ` \u00b7 range ${Math.round(m.range * 100)}%`;
+      case 'vwap': case 'breadth': return ` \u00b7 vs VWAP ${sgn(m.vwap)}%`;
+      case 'signals': return m.rsi != null ? ` \u00b7 RSI ${Math.round(m.rsi)}` : '';
+      case 'custom': return ` \u00b7 rule ${m.rule ? 'yes' : 'no'}`;
+    }
+    return '';
+  }
+
   // ---------- ring drawing ----------
   const ring = $('ring'), rctx = ring.getContext('2d');
   let G = {};
@@ -680,6 +802,14 @@
     return s + (a >= 1e6 ? '$' + (a / 1e6).toFixed(1) + 'M' : a >= 1e4 ? '$' + (a / 1e3).toFixed(0) + 'k' : a >= 1e3 ? '$' + (a / 1e3).toFixed(1) + 'k' : '$' + a.toFixed(0));
   };
   const hotIndex = fr => S.hot == null ? -1 : fr.keys.findIndex((k, i) => k === S.hot || (fr.members[i] || []).includes(S.hot));
+  // A label pill; `pointed` gives it arrow-shaped ends (used for alerts and custom rules).
+  function pillPath(x, w, h, o, pointed) {
+    const X = x - o, W = w + 2 * o, H = h + 2 * o, r = H / 2;
+    rctx.beginPath();
+    if (!pointed) { rctx.roundRect(X, -H / 2, W, H, r); return; }
+    rctx.moveTo(X, 0); rctx.lineTo(X + r * .8, -H / 2); rctx.lineTo(X + W - r * .8, -H / 2);
+    rctx.lineTo(X + W, 0); rctx.lineTo(X + W - r * .8, H / 2); rctx.lineTo(X + r * .8, H / 2); rctx.closePath();
+  }
   function band(r0, r1, a0, a1) {
     rctx.beginPath();
     rctx.arc(G.cx, G.cy, r1, a0, a1);
@@ -744,6 +874,21 @@
         band(up ? rOut + 3 : inner[i] - 3 - Lb, up ? rOut + 3 + Lb : inner[i] - 3, s0, s1);
         rctx.fillStyle = fillC; rctx.fill();
       }
+      const ind = S.ind && S.ind[i], kind = $('indicator').value;
+      if (ind && (kind === 'range' || kind === 'vwap')) {
+        // notch across the slice: range = low at the inner edge, high at the outer edge;
+        // vwap = VWAP in the middle (dashed), edges at ±1%
+        const pos = kind === 'range' ? ind.range : .5 + Math.max(-1, Math.min(1, ind.vwap)) / 2;
+        const r = inner[i] + (rOut - inner[i]) * pos;
+        if (kind === 'vwap') {
+          const rm = (inner[i] + rOut) / 2;
+          rctx.save(); rctx.setLineDash([2, 2]); rctx.lineWidth = 1; rctx.strokeStyle = C.ink; rctx.globalAlpha *= .5;
+          rctx.beginPath(); rctx.arc(cx, cy, rm, s0, s1); rctx.stroke(); rctx.restore();
+        }
+        rctx.beginPath(); rctx.arc(cx, cy, r, s0, s1);
+        rctx.lineWidth = 5; rctx.strokeStyle = C.surface; rctx.stroke();
+        rctx.lineWidth = 2.5; rctx.strokeStyle = kind === 'vwap' ? C.accent : C.ink; rctx.stroke();
+      }
       rctx.restore();
     }
 
@@ -783,8 +928,24 @@
         rctx.lineTo(cx + Math.cos(mid) * (rLab - 1), cy + Math.sin(mid) * (rLab - 1));
         rctx.stroke(); rctx.restore();
       }
+      const ind = S.ind && S.ind[i], kind = $('indicator').value;
+      if (ind && kind === 'momentum' && Math.abs(ind.mom) > .005) {
+        // comet tail along the ring behind the label: longer = faster move over the window.
+        // Rising holdings climb clockwise in the magnet layout, so their tail trails anticlockwise.
+        const full = S.mode === 'live' ? 1 : 5, len = Math.min(1, Math.abs(ind.mom) / full) * .5, dirA = ind.mom > 0 ? -1 : 1;
+        const rT = rLab - 3, segs = 14;
+        rctx.save(); rctx.lineCap = 'round'; rctx.strokeStyle = ind.mom > 0 ? C.up : C.down;
+        for (let k = 0; k < segs; k++) {
+          const a0 = mid + dirA * len * k / segs, a1 = mid + dirA * len * (k + 1) / segs;
+          rctx.globalAlpha = .85 * (1 - k / segs);
+          rctx.lineWidth = 4.5 * (1 - k / segs) + .5;
+          rctx.beginPath(); rctx.arc(cx, cy, rT, Math.min(a0, a1), Math.max(a0, a1)); rctx.stroke();
+        }
+        rctx.restore();
+      }
       const c = Math.cos(mid), sn = Math.sin(mid), left = c < 0;
       const p = st.pct[i], on = hot || top, cash = fr.cash[i];
+      const pointed = !!ind && ((kind === 'alerts' && ind.alert) || (kind === 'custom' && ind.rule));
       rctx.save();
       if (fr.ext[i]) rctx.globalAlpha = .75;
       const rL = rLab + st.kick[i] * font * 1.4; // losers get knocked outward when shoved
@@ -799,7 +960,6 @@
       // shuffle in and out as the number changes. x runs outward on the right, inward on the left.
       const pw = cash ? 0 : Math.max(rctx.measureText(ps).width, rctx.measureText(usd ? '+$0.0k' : '+0.00%').width);
       const pillX = left ? -(pw + (cash ? 0 : gapX) + pillW) : pw + (cash ? 0 : gapX);
-      // pill: green when up on the day, red when down, neutral when flat or cash
       // pill: stepped green when up, red when down (paler = smaller move), neutral when flat or cash
       const dirC = shadeOf(fr.level[i]);
       const pulse = pulseFor(fr, i);
@@ -807,26 +967,38 @@
         const k = (now - pulse.t) / PULSE_MS, o = 2 + k * font * 1.4;
         rctx.save();
         rctx.globalAlpha = (1 - k) * .9;
-        rctx.beginPath();
-        rctx.roundRect(pillX - o, -pillH / 2 - o, pillW + o * 2, pillH + o * 2, pillH / 2 + o);
+        pillPath(pillX, pillW, pillH, o, pointed);
         rctx.lineWidth = 2.5; rctx.strokeStyle = pulse.color; rctx.stroke();
         rctx.restore();
       }
       if (on) {
-        const o = 2.5;
-        rctx.beginPath();
-        rctx.roundRect(pillX - o, -pillH / 2 - o, pillW + o * 2, pillH + o * 2, pillH / 2 + o);
+        pillPath(pillX, pillW, pillH, 2.5, pointed);
         rctx.lineWidth = 2; rctx.strokeStyle = C.accent; rctx.stroke();
       }
-      rctx.beginPath();
-      rctx.roundRect(pillX, -pillH / 2, pillW, pillH, pillH / 2);
+      pillPath(pillX, pillW, pillH, 0, pointed);
       rctx.fillStyle = dirC || C.surface; rctx.fill();
-      rctx.lineWidth = 1; rctx.strokeStyle = dirC || C.rule;
+      rctx.lineWidth = pointed ? 2 : 1; rctx.strokeStyle = pointed ? C.ink : dirC || C.rule;
       if (fr.ext[i]) { rctx.setLineDash([3, 2]); rctx.strokeStyle = C.ink; }
       rctx.stroke(); rctx.setLineDash([]);
       rctx.textAlign = 'center'; rctx.font = tkFont;
       rctx.fillStyle = dirC ? textOn(dirC) : C.ink;
       rctx.fillText(tk, pillX + pillW / 2, 1);
+      // badge past the outer end of the pill
+      let badge = null;
+      if (ind && kind === 'signals') {
+        if (ind.cross > 0) badge = ['\u25b2', C.up];
+        else if (ind.cross < 0) badge = ['\u25bc', C.down];
+        else if (ind.rsi != null && ind.rsi >= 70) badge = ['\u25c6', C.flat];
+        else if (ind.rsi != null && ind.rsi <= 30) badge = ['\u25c7', C.accent];
+      } else if (ind && kind === 'custom' && ind.rule) badge = ['\u2605', C.accent];
+      if (badge) {
+        const br = pillH * .46, bx = left ? pillX - br - 3 : pillX + pillW + br + 3;
+        rctx.beginPath(); rctx.arc(bx, 0, br, 0, TAU);
+        rctx.fillStyle = C.surface; rctx.fill();
+        rctx.lineWidth = 1.5; rctx.strokeStyle = badge[1]; rctx.stroke();
+        rctx.fillStyle = badge[1]; rctx.textAlign = 'center'; rctx.font = `${font * .8}px ${MONO}`;
+        rctx.textBaseline = 'middle'; rctx.fillText(badge[0], bx, 1);
+      }
       if (!cash) {
         rctx.textAlign = left ? 'right' : 'left'; rctx.font = pFont; // anchored at the ring side
         rctx.fillStyle = p > .005 ? C.up : p < -.005 ? C.down : C.flat;
@@ -853,6 +1025,18 @@
     }
     rctx.fillStyle = C.muted;
     rctx.fillText(footText(fr, st, hotI), cx, cy + rIn * .47);
+    if (S.ind && $('indicator').value === 'breadth') {
+      // dial over the date: share of holdings trading above VWAP (replay: above the 20-day average)
+      const vals = S.ind.filter(Boolean), above = vals.filter(m => m.vwap > 0).length, f = vals.length ? above / vals.length : 0;
+      const r = rIn * .84, a0 = Math.PI * 1.32, a1 = Math.PI * 1.68;
+      rctx.save(); rctx.lineCap = 'round'; rctx.lineWidth = Math.max(4, s * .009);
+      rctx.strokeStyle = C.rule; rctx.beginPath(); rctx.arc(cx, cy, r, a0, a1); rctx.stroke();
+      rctx.strokeStyle = f >= .5 ? C.up : C.down;
+      if (f > 0) { rctx.beginPath(); rctx.arc(cx, cy, r, a0, a0 + (a1 - a0) * f); rctx.stroke(); }
+      rctx.fillStyle = C.ink; rctx.font = `600 ${font * .78}px ${MONO}`; rctx.textAlign = 'center';
+      rctx.fillText(`${above}/${vals.length} above ${S.mode === 'live' ? 'VWAP' : '20d avg'}`, cx, cy - rIn * .63);
+      rctx.restore();
+    }
   }
   // Where each label goes: at its slice's middle, unless that would collide with a neighbour,
   // in which case neighbours are pushed apart along the ring. If there are more labels than fit,
@@ -886,7 +1070,7 @@
     const vol = i => fr.rvol[i] != null ? ` · vol ${fr.rvol[i].toFixed(1)}×` : '';
     if (hotI >= 0) {
       if (fr.members[hotI]) return `${fr.members[hotI].length} small holdings ${money(st.val[hotI])} · click to expand`;
-      return `${fr.labels[hotI]} ${money(st.val[hotI])} · ${(st.w[hotI] * 100).toFixed(1)}%${vol(hotI)}`;
+      return `${fr.labels[hotI]} ${money(st.val[hotI])} · ${(st.w[hotI] * 100).toFixed(1)}%${vol(hotI)}${indNote(fr, hotI)}`;
     }
     if (fr.measure === 'usd' && fr.moved) { // biggest dollar contributors
       const top2 = fr.items.filter(x => !x.cash).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 2);
@@ -973,6 +1157,19 @@
     $('lgExt').hidden = !fr.ext.some(Boolean);
     $('guides').textContent = MEASURES[fr.measure].guides;
     $('lgShade').textContent = MEASURES[fr.measure].shadeNote;
+    const kind = $('indicator').value, live = S.mode === 'live';
+    const notes = {
+      momentum: `Tail: ${live ? '15-minute' : '5-day'} momentum, longer = faster`,
+      range: `Notch: price within ${live ? "today's" : 'the 20-day'} range, outer edge = high`,
+      vwap: `Notch: price vs ${live ? 'VWAP' : '20-day volume-weighted average'} (dashed middle), edges = ±1%`,
+      signals: `Badges: ▲▼ crossed ${live ? 'VWAP' : 'the 20-day average'} lately · ◆ RSI 70+ · ◇ RSI 30 or less`,
+      alerts: 'Pointed pill: volume 2× normal and a move of 1% or more',
+      breadth: `Dial: holdings above ${live ? 'VWAP' : 'their 20-day average'}`,
+      custom: '★ and pointed pill: your rule is true'
+    };
+    $('lgInd').hidden = kind === 'none';
+    $('lgIndText').textContent = notes[kind] || '';
+    $('ruleBox').hidden = kind !== 'custom';
   }
 
   // ---------- value line: intraday in live, day-by-day in replay ----------
@@ -1088,6 +1285,13 @@
   $('next').addEventListener('click', () => { stop(); goTo(S.day + 1); });
   $('speed').addEventListener('change', setSpeed);
   $('layout').addEventListener('change', () => { S.rank = null; reshow(); });
+  const store = { get: k => { try { return localStorage.getItem(k); } catch (_) { return null; } },
+                  set: (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* private mode */ } } };
+  $('indicator').value = store.get('ring.indicator') || 'none';
+  $('customRule').value = store.get('ring.rule') || $('customRule').value;
+  compileRule();
+  $('indicator').addEventListener('change', () => { store.set('ring.indicator', $('indicator').value); reshow(); });
+  $('customRule').addEventListener('input', () => { store.set('ring.rule', $('customRule').value); compileRule(); reshow(); });
   $('measure').addEventListener('change', () => { S.measure = $('measure').value; S.rank = null; S.levels = new Map(); S.prevMarks = null; reshow(); });
   document.addEventListener('keydown', e => {
     if (e.target.matches('input, select, button')) return;
